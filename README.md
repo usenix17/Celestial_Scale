@@ -134,6 +134,6 @@ The following services were enabled on a headless kiosk with no need for printin
 
 ## Conclusion
 
-The Celestial Scale's failure was caused by a combination of a physically failing SD card, a faulted HX711 ADC, and a software stack with unnecessary complexity. No single fix would have resolved the system. The SD card failure alone made the device appear completely dead, masking the downstream hardware and wiring issues that would have prevented sensor operation even with a working boot.
+The Celestial Scale's failure was caused by a combination of a physically failing SD card, a faulted HX711 ADC, and a software stack with unnecessary complexity. No single fix would have resolved the system. The SD card failure alone made the device appear completely dead.
 
 The recommended rebuild eliminates the RP2040 middleman, uses pigpio for reliable ADC reads, powers the system safely through the micro-USB port, and runs a minimal OS image with a proper `systemd` service. Updated code and wiring diagrams have been prepared and are ready for deployment once replacement hardware is available.
