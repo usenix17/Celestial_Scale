@@ -1,8 +1,8 @@
-#Celestial Scale Calibration Guide
+# Celestial Scale Calibration Guide
 
 This document provides instructions on how to calibrate the load cell to ensure accurate planetary weight calculations.
 
-##Prerequisites
+## Prerequisites
 - A Known Weight: You need a heavy, static object with a known weight in pounds.
 
 - Access: An SSH connection or a keyboard attached to the Raspberry Pi.
