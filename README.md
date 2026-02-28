@@ -58,7 +58,7 @@ The Raspberry Pi OS image was configured with `cloud-init`, a provisioning frame
 
 #### 3. Application Autostart via `.bashrc`
 
-The scale application was launched by appending a python3 exec line to the user's `.bashrc`, gated on tty1. While functional, this approach is fragile: it doesn't support automatic restart on crash, has no logging, doesn't handle dependencies (such as `pigpiod` needing to start first), and was being overwritten by `cloud-init` on every boot. A `systemd` service unit is the correct mechanism for this.
+The scale application was launched by appending a python3 exec line to the user's `.bashrc`, gated on `tty1`. While functional, this approach is fragile: it doesn't support automatic restart on crash, has no logging, doesn't handle dependencies (such as `pigpiod` needing to start first), and was being overwritten by `cloud-init` on every boot. A `systemd` service unit is the correct mechanism for this.
 
 #### 4. Unnecessary RP2040 Middleman
 
