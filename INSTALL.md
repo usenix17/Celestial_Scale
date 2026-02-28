@@ -52,6 +52,7 @@ bash /root/bootstrap.sh
 ```
 
 This will:
+- Configure WiFi via `systemd_networkd`
 - Install system dependencies (`pigpio`, `python3-pygame`, etc.)
 - Download `celestial_scale.py` and `celestial.service` from GitHub
 - Enable the `pigpiod` and `celestial_scale` systemd services
