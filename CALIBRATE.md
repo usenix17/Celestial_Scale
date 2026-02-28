@@ -20,7 +20,7 @@ This document provides instructions on how to calibrate the load cell to ensure 
   2. Run the Calibration Tool
   Execute the calibration script:
 
-  ``bash
+  ```bash
   python3 calibrate.py
   ```
 
@@ -42,11 +42,11 @@ Open the main script:
 
 ```bash
 vim /home/oas/celestial_scale/celestial_scale.py
-``
+```
 
 Locate the Config & Tuning section.
 
-Find the CALIBRATION_FACTOR constant:
+Find the `CALIBRATION_FACTOR` constant:
 
 ```python
 # Replace the existing value with your new SCALE_RATIO
