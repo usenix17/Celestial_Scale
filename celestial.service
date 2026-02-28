@@ -1,0 +1,16 @@
+[Unit]
+Description=Celestial Scale Kiosk
+After=systemd-user-sessions.service plymouth-quit-wait.service getty@tty1.service
+
+[Service]
+User=oas
+Group=oas
+WorkingDirectory=/home/oas/celestial_scale
+ExecStart=/usr/bin/python3 /home/oas/celestial_scale/scale.py
+Restart=always
+RestartSec=3
+StandardInput=tty
+TTYPath=/dev/tty1
+
+[Install]
+WantedBy=multi-user.target
