@@ -26,7 +26,7 @@ The Celestial Scale, a public-facing kiosk that displays a person's weight on va
 | **Power Fix** | USB-C connector lacked required 5.1kΩ CC pull-down resistors. Switching to a USB-A to USB-C cable bypassed CC negotiation and delivered 5V. Board still did not boot. |
 | **SD Card** | SD card reported as 121 MB instead of 29 GB. Intermittent detection on host workstation. Card was dragging down the Pi's 3.3V rail, preventing the SoC from powering on entirely. |
 | **HX711 Testing** | With inputs shorted (known zero reference), the HX711 ADC returned wildly inconsistent values ranging from -8 million to +8 million. A functioning HX711 should return near-identical values. Chip confirmed damaged. |
-| **Load Cells** | Intermittent connections at the combiner board. One cell initially showed open-circuit on two wire pairs due to a loose connector. Combiner-to-HX711 wiring was missing entirely. |
+| **Load Cells** | Intermittent connections at the combiner board. One cell initially showed open-circuit on two wire pairs due to a loose connector.|
 | **GPIO Wiring** | HX711 DOUT and SCK lines were swapped on the Pi's GPIO header. |
 
 ---
