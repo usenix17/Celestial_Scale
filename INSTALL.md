@@ -23,7 +23,19 @@ When prompted:
 - **Architecture**: `arm64` for Pi 4/5/Zero 2W, `armhf` for original Pi Zero
 - **Expand partition**: optional, recommended if the card is larger than the image
 
-### 2. Copy bootstrap.sh into the chroot
+### 2. Configure WiFi Credentials
+Before running the bootstrap, ensure your bootstrap.sh script is updated with your specific network credentials:
+
+Open bootstrap.sh on your host machine.
+
+Update the `WIFI_SSID` and `WIFI_PASS` variables:
+
+```bash
+WIFI_SSID="Your_Network_Name"
+WIFI_PASS="Your_Password"
+```
+
+### 3. Copy bootstrap.sh into the chroot
 
 From a second terminal on the host (while the chroot is still open), copy the bootstrap script into the mounted filesystem:
 
@@ -31,7 +43,7 @@ From a second terminal on the host (while the chroot is still open), copy the bo
 sudo cp bootstrap.sh /mnt/pi_root/root/bootstrap.sh
 ```
 
-### 3. Run the bootstrap
+### 4. Run the bootstrap
 
 Back inside the chroot, run the script:
 
@@ -45,7 +57,7 @@ This will:
 - Enable the `pigpiod` and `celestial_scale` systemd services
 - Apply boot config tweaks for kiosk use
 
-### 4. Exit the chroot
+### 5. Exit the chroot
 
 ```bash
 exit
