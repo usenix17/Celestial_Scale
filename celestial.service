@@ -1,16 +1,35 @@
 [Unit]
 Description=Celestial Scale Kiosk
-After=systemd-user-sessions.service plymouth-quit-wait.service getty@tty1.service
+After=pigpiod.service
+Requires=pigpiod.service
 
 [Service]
+Type=notify
 User=oas
-Group=oas
+ExecStart=/usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
 WorkingDirectory=/home/oas/celestial_scale
-ExecStart=/usr/bin/python3 /home/oas/celestial_scale/scale.py
-Restart=always
+
+# Watchdog: reboot if the main loop hangs for 30 seconds
+WatchdogSec=30
+WatchdogSignal=SIGKILL
+
+# Auto-restart on crash (up to 5 times in 60 seconds)
+Restart=on-failure
 RestartSec=3
-StandardInput=tty
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Reboot the whole Pi if restarts are exhausted
+FailureAction=reboot
+
+# Console/framebuffer access
 TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+
+# GPU/display access
+SupplementaryGroups=video input gpio
 
 [Install]
 WantedBy=multi-user.target
