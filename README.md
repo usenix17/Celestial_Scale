@@ -14,7 +14,7 @@
 
 ## Executive Summary
 
-The Celestial Scale, a public-facing kiosk that displays a person's weight on various celestial bodies, was presented as non-functional. Investigation revealed multiple independent hardware failures and significant software architecture issues. The system could not boot, could not read sensor data, and had fundamental design decisions that contributed to the failures.
+The Celestial Scale, a public-facing kiosk that displays a person's weight on various celestial bodies, was presented as non-functional. Investigation revealed multiple independent hardware failures and significant software architecture issues. The system could not boot.
 
 ---
 
