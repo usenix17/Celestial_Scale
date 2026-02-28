@@ -50,7 +50,7 @@ The custom USB-C power input lacked the required 5.1kΩ pull-down resistors on t
 
 #### 1. `cloud-init` on a Kiosk
 
-The Raspberry Pi OS image was configured with `cloud-init`, a provisioning framework designed for cloud virtual machines. `cloud-init` was actively rewriting user configuration files (including `.bashrc`) on every boot, overriding manual changes. `cloud-init` can not be disabled through standard systemctl commands, as it re-enabled its own services through multiple persistence mechanisms including `init.d` scripts, `deb-systemd-helper` state files, and target dependencies. `cloud-init` added approximately 40 seconds to every boot cycle and served no purpose on a standalone kiosk.
+The Raspberry Pi OS image was configured with `cloud-init`, a provisioning framework designed for cloud virtual machines. `cloud-init` was actively rewriting user configuration files (including `.bashrc`) on every boot, overriding manual changes. `cloud-init` can not be disabled through standard `systemctl` commands, as it re-enabled its own services through multiple persistence mechanisms including `init.d` scripts, `deb-systemd-helper` state files, and target dependencies. `cloud-init` added approximately 40 seconds to every boot cycle and served no purpose on a standalone kiosk.
 
 #### 2. `NetworkManager`
 
