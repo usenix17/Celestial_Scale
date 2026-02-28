@@ -27,7 +27,7 @@ mkdir -p "$INSTALL_DIR/assets/fonts"
 
 # 3. Download Source Files
 echo "Fetching source files from GitHub..."
-curl -L "$REPO_RAW/scale.py" -o "$INSTALL_DIR/celestial_scale.py"
+curl -L "$REPO_RAW/celestial_scale.py" -o "$INSTALL_DIR/celestial_scale.py"
 curl -L "$REPO_RAW/celestial.service" -o "/etc/systemd/system/celestial_scale.service"
 
 # Ensure the script is executable
