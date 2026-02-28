@@ -27,7 +27,6 @@ The Celestial Scale, a public-facing kiosk that displays a person's weight on va
 | **SD Card** | SD card reported as 121 MB instead of 29 GB. Intermittent detection on host workstation. Card was dragging down the Pi's 3.3V rail, preventing the SoC from powering on entirely. |
 | **HX711 Testing** | With inputs shorted (known zero reference), the HX711 ADC returned wildly inconsistent values ranging from -8 million to +8 million. A functioning HX711 should return near-identical values. Chip confirmed damaged. |
 | **Load Cells** | Intermittent connections at the combiner board. One cell initially showed open-circuit on two wire pairs due to a loose connector.|
-| **GPIO Wiring** | HX711 DOUT and SCK lines were swapped on the Pi's GPIO header. |
 
 ---
 
