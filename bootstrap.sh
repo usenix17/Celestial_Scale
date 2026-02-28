@@ -50,7 +50,7 @@ echo "Configuring services..."
 systemctl enable pigpiod
 systemctl enable celestial_scale.service
 
-# 6. Kiosk Hardware Optimization
+# 7. Kiosk Hardware Optimization
 echo "Applying Pi Zero performance tweaks..."
 CONFIG_PATH="/boot/firmware/config.txt"
 [ ! -f "$CONFIG_PATH" ] && CONFIG_PATH="/boot/config.txt"
