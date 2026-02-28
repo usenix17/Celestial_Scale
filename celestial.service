@@ -28,6 +28,10 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
+# Scheduling priority for timing-sensitive GPIO
+Nice=-20
+IOSchedulingClass=realtime
+
 # GPU/display access
 SupplementaryGroups=video input gpio
 
