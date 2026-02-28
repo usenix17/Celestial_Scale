@@ -26,7 +26,7 @@ When prompted:
 ### 2. Configure WiFi Credentials
 Before running the bootstrap, ensure your bootstrap.sh script is updated with your specific network credentials:
 
-Open bootstrap.sh on your host machine.
+Open `bootstrap.sh` on your host machine.
 
 Update the `WIFI_SSID` and `WIFI_PASS` variables:
 
