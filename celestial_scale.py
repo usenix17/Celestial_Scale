@@ -805,7 +805,7 @@ def handle_shutdown(ui):
     blit_centered(ui.screen, ui.cache["shutting_down"], ui.height / 2)
     pygame.display.flip()
     time.sleep(2)
-    subprocess.call(["sudo", "shutdown", "-h", "now"])
+    subprocess.call(["sudo", "systemctl", "poweroff"])
     sys.exit()
 
 

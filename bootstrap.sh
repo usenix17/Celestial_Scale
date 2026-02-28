@@ -28,16 +28,24 @@ mkdir -p "$INSTALL_DIR/assets/fonts"
 # 3. Download Source Files
 echo "Fetching source files from GitHub..."
 curl -L "$REPO_RAW/celestial_scale.py" -o "$INSTALL_DIR/celestial_scale.py"
+curl -L "$REPO_RAW/calibrate.py" -o "$INSTALL_DIR/calibrate.py"
 curl -L "$REPO_RAW/celestial.service" -o "/etc/systemd/system/celestial_scale.service"
+curl -L "$REPO_RAW/assets/fonts/Nasalization%20Rg.otf" -o "$INSTALL_DIR/assets/fonts/Nasalization Rg.otf"
 
-# Ensure the script is executable
-chmod +x "$INSTALL_DIR/scale.py"
+# Ensure the scripts are executable
+chmod +x "$INSTALL_DIR/celestial_scale.py"
+chmod +x "$INSTALL_DIR/calibrate.py"
 
 # 4. Permissions
 # Ensure the 'oas' user owns the project files
 chown -R $USER_NAME:$USER_NAME "$INSTALL_DIR"
 
-# 5. Enable Services
+# 5. Sudoers rule for safe shutdown from the kiosk button
+echo "${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff" \
+    > /etc/sudoers.d/celestial-poweroff
+chmod 440 /etc/sudoers.d/celestial-poweroff
+
+# 6. Enable Services
 echo "Configuring services..."
 systemctl enable pigpiod
 systemctl enable celestial_scale.service

@@ -28,6 +28,9 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
+# SDL framebuffer display (KMS/DRM, no X11 required)
+Environment=SDL_VIDEODRIVER=kmsdrm
+
 # Scheduling priority for timing-sensitive GPIO
 Nice=-20
 IOSchedulingClass=realtime
