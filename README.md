@@ -111,8 +111,6 @@ The following services were enabled on a headless kiosk with no need for printin
 5. **Use Raspberry Pi OS Lite.** No desktop environment, no cloud-init, no unnecessary services. Flash without Raspberry Pi Imager customizations to avoid cloud-init injection.
 6. **Replace NetworkManager with systemd-networkd + wpa_supplicant.** Saves 56+ seconds at boot.
 7. **Use a systemd service for the application.** Provides automatic restart, dependency ordering, and journald logging instead of a .bashrc hack.
-8. **Verify load cell wiring with a multimeter.** Measure resistance on all three wire pairs per cell to identify the center tap. Red wire was center tap on these cells (Red→C, Black→+, White→– on the combiner).
-9. **Wire the combiner to the HX711.**
 ---
 
 ## Recommended Signal Chain
