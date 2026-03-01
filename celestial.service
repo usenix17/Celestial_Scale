@@ -13,6 +13,9 @@ EnvironmentFile=/etc/celestial-env
 Environment=SDL_VIDEODRIVER=wayland
 # Prevent GLib/dconf from trying to connect to a D-Bus session bus (none exists in a service)
 Environment=GSETTINGS_BACKEND=memory
+# Disable libdecor (Wayland client-side decorations) - cage is fullscreen, no decorations needed.
+# libdecor loads pango/fontconfig which hangs in a minimal service environment.
+Environment=SDL_VIDEO_WAYLAND_PREFER_LIBDECOR=0
 # Ensure XDG_RUNTIME_DIR exists (linger may not fire before this service starts)
 ExecStartPre=+/bin/install -d -o oas -g oas -m 0700 ${XDG_RUNTIME_DIR}
 ExecStart=/usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py

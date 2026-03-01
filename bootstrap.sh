@@ -41,6 +41,9 @@ apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
     libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage seatd vim
 
+# Pre-build fontconfig cache so pango doesn't scan fonts on first service start
+fc-cache -f
+
 # 3. pigpio Build & Service Setup
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
     echo "Building pigpio from source..."
