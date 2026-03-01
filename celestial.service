@@ -1,6 +1,6 @@
 [Unit]
 Description=Celestial Scale Kiosk
-After=pigpiod.service seatd.service
+After=pigpiod.service seatd.service systemd-logind.service
 Requires=pigpiod.service seatd.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -11,6 +11,8 @@ NotifyAccess=all
 User=oas
 EnvironmentFile=/etc/celestial-env
 Environment=SDL_VIDEODRIVER=wayland
+# Ensure XDG_RUNTIME_DIR exists (linger may not fire before this service starts)
+ExecStartPre=+/bin/install -d -o oas -g oas -m 0700 ${XDG_RUNTIME_DIR}
 ExecStart=/usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
 WorkingDirectory=/home/oas/celestial_scale
 
