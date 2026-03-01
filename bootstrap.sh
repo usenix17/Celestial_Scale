@@ -14,11 +14,16 @@ REPO_RAW="https://raw.githubusercontent.com/usenix17/Celestial_Scale/main"
 USER_NAME="oas"
 USER_PASS="oas"
 INSTALL_DIR="/home/$USER_NAME/celestial_scale"
-WIFI_SSID="Your_SSID"
-WIFI_PASS="Your_Password"
 COUNTRY_CODE="US"
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
+
+read -rp "WiFi SSID: " WIFI_SSID
+read -rsp "WiFi Password: " WIFI_PASS
+echo
+
+# Ensure DNS works inside the chroot
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
 echo "Starting Celestial Scale Bootstrap..."
 
@@ -33,7 +38,8 @@ fi
 echo "Installing system packages..."
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
-    python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved
+    python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
+    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage
 
 # 3. pigpio Build & Service Setup
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
@@ -67,10 +73,57 @@ chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME"
 echo "${USER_NAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/oas-nopasswd
 chmod 440 /etc/sudoers.d/oas-nopasswd
 
+# Create environment file with runtime dir for the user's uid (used by systemd service)
+echo "XDG_RUNTIME_DIR=/run/user/$(id -u $USER_NAME)" > /etc/celestial-env
+
+# Enable linger so systemd creates /run/user/UID on boot without a login session.
+# loginctl enable-linger doesn't work in a chroot (no D-Bus), so write the file directly.
+mkdir -p /var/lib/systemd/linger
+touch /var/lib/systemd/linger/"$USER_NAME"
+
 # 6. Disable cloud-init
 touch /etc/cloud/cloud-init.disabled
 
-# 7. Networking (Forced Masking)
+# 7. Disable unnecessary services
+# Mask rather than disable — prevents them starting even as a dependency.
+# ln -sf /dev/null is equivalent to systemctl mask and works safely in a chroot.
+echo "Masking unnecessary services..."
+for SVC in \
+    ModemManager \
+    bluetooth \
+    cups \
+    cups-browsed \
+    avahi-daemon \
+    colord \
+    polkit \
+    dpkg-db-backup \
+    apt-daily \
+    apt-daily-upgrade \
+    man-db \
+    e2scrub_reap \
+    NetworkManager \
+    NetworkManager-wait-online \
+    NetworkManager-dispatcher \
+    NetworkManager-sleep \
+    rpi-eeprom-update \
+    raspi-config \
+    getty@tty1; do
+    ln -sf /dev/null "/etc/systemd/system/${SVC}.service"
+done
+
+# Mask unnecessary timers
+for TIMER in \
+    apt-daily \
+    apt-daily-upgrade \
+    man-db \
+    e2scrub_reap \
+    dpkg-db-backup \
+    logrotate \
+    fstrim; do
+    ln -sf /dev/null "/etc/systemd/system/${TIMER}.timer"
+done
+
+# 8. Networking (Forced Masking)
 echo "Configuring networkd..."
 ln -sf /dev/null /etc/systemd/system/NetworkManager.service
 
@@ -86,14 +139,28 @@ EOF
 
 cat <<EOF > /etc/systemd/network/25-wireless.network
 [Match]
-Name=wlan0
+Name=wl*
 [Network]
 DHCP=yes
 EOF
 
-# 8. Service Activation
+# 9. rfkill unblock WiFi at boot
+cat <<EOF > /etc/systemd/system/rfkill-unblock-wifi.service
+[Unit]
+Description=Unblock WiFi via rfkill
+Before=wpa_supplicant@wlan0.service
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/rfkill unblock wifi
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 10. Service Activation
 echo "Enabling services..."
 systemctl enable pigpiod
+systemctl enable ssh
+systemctl enable rfkill-unblock-wifi
 systemctl enable systemd-networkd
 systemctl enable systemd-resolved
 systemctl enable wpa_supplicant@wlan0.service

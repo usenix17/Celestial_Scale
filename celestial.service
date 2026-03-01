@@ -1,12 +1,17 @@
 [Unit]
 Description=Celestial Scale Kiosk
-After=pigpiod.service
+After=pigpiod.service systemd-logind.service
 Requires=pigpiod.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=notify
+NotifyAccess=all
 User=oas
-ExecStart=/usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
+EnvironmentFile=/etc/celestial-env
+Environment=SDL_VIDEODRIVER=wayland
+ExecStart=/usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
 WorkingDirectory=/home/oas/celestial_scale
 
 # Watchdog: reboot if the main loop hangs for 30 seconds
@@ -16,11 +21,6 @@ WatchdogSignal=SIGKILL
 # Auto-restart on crash (up to 5 times in 60 seconds)
 Restart=on-failure
 RestartSec=3
-StartLimitIntervalSec=60
-StartLimitBurst=5
-
-# Reboot the whole Pi if restarts are exhausted
-FailureAction=reboot
 
 # Console/framebuffer access
 TTYPath=/dev/tty1
@@ -28,15 +28,12 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# SDL framebuffer display (KMS/DRM, no X11 required)
-Environment=SDL_VIDEODRIVER=kmsdrm
-
 # Scheduling priority for timing-sensitive GPIO
 Nice=-20
 IOSchedulingClass=realtime
 
 # GPU/display access
-SupplementaryGroups=video input gpio
+SupplementaryGroups=video input gpio render
 
 [Install]
 WantedBy=multi-user.target
