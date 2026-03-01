@@ -31,7 +31,7 @@ echo "Starting Celestial Scale Bootstrap..."
 if ! id "$USER_NAME" &>/dev/null; then
     useradd -m -s /bin/bash "$USER_NAME"
     echo "$USER_NAME:$USER_PASS" | chpasswd
-    usermod -aG gpio,video,input,i2c,audio,render "$USER_NAME"
+    usermod -aG gpio,video,input,i2c,audio,render,seat,tty "$USER_NAME"
 fi
 
 # 2. System Dependencies (Added systemd-resolved)
@@ -39,7 +39,7 @@ echo "Installing system packages..."
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
-    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage
+    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage seatd vim
 
 # 3. pigpio Build & Service Setup
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
@@ -107,6 +107,7 @@ for SVC in \
     NetworkManager-sleep \
     rpi-eeprom-update \
     raspi-config \
+    userconfig \
     getty@tty1; do
     ln -sf /dev/null "/etc/systemd/system/${SVC}.service"
 done
@@ -159,6 +160,7 @@ EOF
 # 10. Service Activation
 echo "Enabling services..."
 systemctl enable pigpiod
+systemctl enable seatd
 systemctl enable ssh
 systemctl enable rfkill-unblock-wifi
 systemctl enable systemd-networkd

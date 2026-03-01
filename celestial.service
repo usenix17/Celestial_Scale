@@ -1,7 +1,7 @@
 [Unit]
 Description=Celestial Scale Kiosk
-After=pigpiod.service systemd-logind.service
-Requires=pigpiod.service
+After=pigpiod.service seatd.service
+Requires=pigpiod.service seatd.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
@@ -33,7 +33,7 @@ Nice=-20
 IOSchedulingClass=realtime
 
 # GPU/display access
-SupplementaryGroups=video input gpio render
+SupplementaryGroups=video input gpio render seat tty
 
 [Install]
 WantedBy=multi-user.target
