@@ -31,7 +31,7 @@ echo "Starting Celestial Scale Bootstrap..."
 if ! id "$USER_NAME" &>/dev/null; then
     useradd -m -s /bin/bash "$USER_NAME"
     echo "$USER_NAME:$USER_PASS" | chpasswd
-    usermod -aG gpio,video,input,i2c,audio,render,seat,tty "$USER_NAME"
+    usermod -aG gpio,video,input,i2c,audio,render,tty "$USER_NAME"
 fi
 
 # 2. System Dependencies (Added systemd-resolved)
@@ -159,6 +159,10 @@ EOF
 
 # 10. Service Activation
 echo "Enabling services..."
+# seatd may not create the seat group automatically on Debian
+groupadd -r seat 2>/dev/null || true
+usermod -aG seat "$USER_NAME"
+
 systemctl enable pigpiod
 systemctl enable seatd
 systemctl enable ssh
