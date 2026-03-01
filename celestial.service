@@ -22,7 +22,7 @@ ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -- /usr/bin/python3 /home/oas/
 WorkingDirectory=/home/oas/celestial_scale
 
 # Watchdog: reboot if the main loop hangs for 30 seconds
-WatchdogSec=30
+WatchdogSec=120
 WatchdogSignal=SIGKILL
 
 # Auto-restart on crash (up to 5 times in 60 seconds)
