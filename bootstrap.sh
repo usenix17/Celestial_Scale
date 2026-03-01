@@ -108,9 +108,12 @@ for SVC in \
     rpi-eeprom-update \
     raspi-config \
     userconfig \
+    alsa-restore \
     getty@tty1; do
     ln -sf /dev/null "/etc/systemd/system/${SVC}.service"
 done
+
+ln -sf /dev/null /etc/systemd/system/avahi-daemon.socket
 
 # Mask unnecessary timers
 for TIMER in \
