@@ -29,9 +29,6 @@ WatchdogSignal=SIGKILL
 Restart=on-failure
 RestartSec=3
 
-# Console/framebuffer access
-TTYPath=/dev/tty1
-StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
