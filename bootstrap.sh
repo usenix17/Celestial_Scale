@@ -1,7 +1,8 @@
 #!/bin/bash
 # ==============================================================================
 # Script Name: bootstrap.sh
-# Description: Automated install for Celestial Scale with WiFi & systemd-networkd.
+# Description: Automated install for Celestial Scale. 
+# Rebuild Version: Feb 2026 - Post-Mortem compliant.
 # ==============================================================================
 
 set -e
@@ -11,22 +12,31 @@ REPO_RAW="https://raw.githubusercontent.com/usenix17/Celestial_Scale/main"
 INSTALL_DIR="/home/oas/celestial_scale"
 USER_NAME="oas"
 
-# WiFi Credentials (Replace these or use environment variables)
+# WiFi Credentials
 WIFI_SSID="Your_SSID"
 WIFI_PASS="Your_Password"
 COUNTRY_CODE="US"
 
-echo "Starting Celestial Scale Bootstrap from GitHub..."
+echo "Starting Celestial Scale Bootstrap..."
 
-# 1. System Dependencies
-echo "Installing system packages..."
+# 1. System Dependencies & pigpio Fix
+echo "Installing system packages and hardware libraries..."
 apt-get update
-apt-get install -y \
-    python3-pip python3-pygame pigpio python3-pigpio \
-    python3-gpiozero git curl wget wpasupplicant
+apt-get install -y build-essential python3-setuptools unzip wget curl git python3-pip python3-pygame python3-gpiozero wpasupplicant
+
+# Attempt pigpio install; build from source if apt fails
+if ! apt-get install -y pigpio python3-pigpio; then
+    echo "pigpio package not found. Building from source for Trixie compatibility..."
+    wget https://github.com/joan2937/pigpio/archive/master.zip -O /tmp/pigpio.zip
+    unzip -q -o /tmp/pigpio.zip -d /tmp
+    cd /tmp/pigpio-master
+    make
+    # Manually adding /sbin to PATH to ensure ldconfig is found
+    PATH=$PATH:/sbin:/usr/sbin make install
+    cd /
+fi
 
 # 2. Directory Setup
-mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/assets/fonts"
 
 # 3. Download Source Files
@@ -39,17 +49,17 @@ curl -L "$REPO_RAW/assets/fonts/Nasalization%20Rg.otf" -o "$INSTALL_DIR/assets/f
 chmod +x "$INSTALL_DIR/celestial_scale.py"
 chmod +x "$INSTALL_DIR/calibrate.py"
 
-# 4. Permissions
+# 4. Permissions & Sudoers
 chown -R $USER_NAME:$USER_NAME "$INSTALL_DIR"
-
-echo "${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff" \
-    > /etc/sudoers.d/celestial-poweroff
+echo "${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff" > /etc/sudoers.d/celestial-poweroff
 chmod 440 /etc/sudoers.d/celestial-poweroff
 
-# 5. WiFi & Networking Configuration (systemd-networkd)
-echo "Configuring Networking and WiFi..."
+# 5. Networking: Eliminate NetworkManager
+echo "Optimizing network stack (Switching to systemd-networkd)..."
+systemctl stop NetworkManager || true
+systemctl disable NetworkManager || true
+systemctl mask NetworkManager
 
-# Setup wpa_supplicant
 cat <<EOF > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -62,7 +72,6 @@ network={
 EOF
 chmod 600 /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 
-# Setup systemd-networkd profile for wlan0
 cat <<EOF > /etc/systemd/network/25-wireless.network
 [Match]
 Name=wlan0
@@ -72,28 +81,29 @@ DHCP=yes
 EOF
 
 # 6. Enable Services
-echo "Enabling services..."
+echo "Enabling optimized services..."
+systemctl daemon-reload
 systemctl enable pigpiod
 systemctl enable celestial_scale.service
-
-# Switch to systemd-networkd
 systemctl enable systemd-networkd
 systemctl enable systemd-resolved
 systemctl enable wpa_supplicant@wlan0.service
 
-# 7. Kiosk Hardware Optimization
-echo "Applying Pi Zero performance tweaks..."
+# 7. Hardware Optimization
+echo "Applying Pi Zero performance and safety tweaks..."
 CONFIG_PATH="/boot/firmware/config.txt"
 [ ! -f "$CONFIG_PATH" ] && CONFIG_PATH="/boot/config.txt"
 
 {
+    echo "# Celestial Scale Optimizations"
     echo "disable_splash=1"
     echo "hdmi_force_hotplug=1"
     echo "dtparam=audio=on"
+    echo "dtoverlay=disable-bt" 
 } >> "$CONFIG_PATH"
 
 echo -e "\n========================================="
 echo "  BOOTSTRAP COMPLETE"
-echo "  WiFi Configured: ${WIFI_SSID}"
-echo "  Networking: systemd-networkd"
+echo "  System: Debian Trixie / Pi Zero"
+echo "  Primary Fixes: pigpio source build + systemd-networkd"
 echo "========================================="

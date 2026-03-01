@@ -1,69 +1,78 @@
-# Celestial Scale Calibration Guide
+# Calibration
 
-This document provides instructions on how to calibrate the load cell to ensure accurate planetary weight calculations.
+The scale must be calibrated once after assembly to convert raw HX711 ADC counts into pounds. The result is saved to `calibration.cfg` and loaded automatically by `celestial_scale.py` on startup — no code editing required.
 
-## Prerequisites
-- A Known Weight: You need a heavy, static object with a known weight in pounds.
+## What you need
 
-- Access: An SSH connection or a keyboard attached to the Raspberry Pi.
+- A known reference weight (a dumbbell, a bag of dog food with a printed weight, etc.)
+- SSH access to the Pi
 
-- Service Control: The main kiosk service must be stopped to free up GPIO pins.
+## Procedure
 
-## Calibration Steps
-  1. Prepare the Environment
-  Stop the background service to prevent hardware conflicts with the HX711 sensor:
+### 1. Stop the kiosk service
 
-  ```bash
-  sudo systemctl stop celestial_scale.service
-  ```
-
-  2. Run the Calibration Tool
-  Execute the calibration script:
-
-  ```bash
-  python3 calibrate.py
-  ```
-
-  3. Follow the Prompts
-
-  - Zeroing: When prompted, ensure the scale platform is empty to capture the Zero Offset.
-
-  - Loading: Place your known weight in the center of the scale.
-
-  - Input: Enter the exact weight of the object in pounds when prompted by the script.
-
-  4. Capture the Ratio
-  The script will output a `SCALE_RATIO`/`CALIBRATION_RATIO` value. Note this number for the next step.
-
-## Applying the Calibration
-To save these changes, you must update the main application file:
-
-Open the main script:
+The kiosk and the calibration tool both use the HX711; only one can hold the GPIO pins at a time.
 
 ```bash
-vim /home/oas/celestial_scale/celestial_scale.py
+sudo systemctl stop celestial_scale
 ```
 
-Locate the Config & Tuning section.
-
-Find the `CALIBRATION_FACTOR` constant:
-
-```python
-# Replace the existing value with your new SCALE_RATIO
-CALIBRATION_FACTOR = [Your_New_Ratio]
-```
-Save and exit.
-
-### Restart and Verify
-Restart the service to apply the new calibration:
+### 2. Run the calibration tool
 
 ```bash
-sudo systemctl start celestial_scale.service
+cd /home/oas/celestial_scale
+python3 calibrate.py
 ```
+
+### 3. Follow the prompts
+
+**Step 1 — Tare:** Remove everything from the scale platform and press Enter. The tool captures 20 baseline readings.
+
+**Step 2 — Known weight:** Place your reference weight on the platform, enter its weight in pounds when prompted, and wait. The tool captures 20 loaded readings.
+
+The factor is computed and written to `calibration.cfg` automatically:
+
+```
+========================================
+CALIBRATION SUCCESSFUL
+Known Weight:     50.0 lbs
+Net Raw Value:    21000.0
+Calibration Factor: 420.0000
+Saved to:         /home/oas/celestial_scale/calibration.cfg
+========================================
+```
+
+### 4. Restart the service
+
+```bash
+sudo systemctl start celestial_scale
+```
+
+The new factor takes effect immediately on restart. No code changes needed.
+
+---
+
+## How it works
+
+`calibration.cfg` is a plain INI file written by `calibrate.py`:
+
+```ini
+[scale]
+calibration_factor = 420.0000
+```
+
+`celestial_scale.py` reads this file at startup. If the file is missing, it falls back to a built-in default and prints a warning — check the journal if readings seem off:
+
+```bash
+sudo journalctl -u celestial_scale -n 20
+```
+
+## Re-calibrating
+
+Run `calibrate.py` again at any time — it overwrites `calibration.cfg` with the new value. Useful after replacing load cells or the HX711 board.
 
 ## Troubleshooting
-- Inconsistent Readings: Ensure the scale is on a flat, hard surface.
 
-- Negative Weights: If the weight decreases when load is applied, the A+ and A- wires on the HX711 may be swapped.
-
-- Disconnected Sensor: Ensure pigpiod is running by using sudo systemctl start pigpiod.
+- **Inconsistent readings:** Ensure the scale is on a flat, hard surface and the platform isn't touching anything on the sides.
+- **Negative weights:** If the reading decreases when load is applied, the A+ and A- wires on the HX711 are swapped.
+- **Sensor disconnected:** Ensure pigpiod is running — `sudo systemctl start pigpiod`.

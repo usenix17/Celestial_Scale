@@ -16,12 +16,17 @@ Requires:
     - HX711 wired to GPIO 5 (DOUT) and GPIO 6 (SCK)
 """
 
+import configparser
 import statistics
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 import pigpio
+
+CALIBRATION_CONFIG = Path(__file__).resolve().parent / "calibration.cfg"
+"""Path: Config file written by this tool and read by celestial_scale.py."""
 
 # ----------------------------
 # Hardware Pins (must match celestial_scale.py)
@@ -169,14 +174,21 @@ def main() -> None:
     # Step 3: Compute and display result
     scale_factor = net_raw / known_weight
 
+    # Step 4: Write result to calibration.cfg
+    cfg = configparser.ConfigParser()
+    cfg["scale"] = {"calibration_factor": f"{scale_factor:.4f}"}
+    with open(CALIBRATION_CONFIG, "w") as f:
+        cfg.write(f)
+
     print("\n" + "=" * 40)
     print("CALIBRATION SUCCESSFUL")
     print(f"Known Weight:     {known_weight} lbs")
     print(f"Net Raw Value:    {net_raw}")
-    print(f"Your SCALE_RATIO: {scale_factor:.4f}")
+    print(f"Calibration Factor: {scale_factor:.4f}")
+    print(f"Saved to:         {CALIBRATION_CONFIG}")
     print("=" * 40)
-    print(f"\nUpdate your celestial_scale.py with:\n"
-          f"CALIBRATION_FACTOR = {scale_factor:.4f}")
+    print("\nRestart the celestial_scale service to apply:")
+    print("  sudo systemctl restart celestial_scale")
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ Requires:
     - python3-pygame
 """
 
+import configparser
 import math
 import os
 import statistics
@@ -81,8 +82,37 @@ HX711_DOUT_PIN = 5
 HX711_SCK_PIN = 6
 """int: BCM GPIO pin for HX711 serial clock (Physical Pin 31)."""
 
-CALIBRATION_FACTOR = 420.0
-"""float: Converts raw HX711 counts to pounds. Adjust with a known weight."""
+_CALIBRATION_DEFAULT = 420.0
+_CALIBRATION_CONFIG = Path(__file__).resolve().parent / "calibration.cfg"
+
+
+def _load_calibration_factor():
+    """Loads CALIBRATION_FACTOR from calibration.cfg, or returns the default.
+
+    calibration.cfg is written by calibrate.py after running the calibration
+    procedure. If the file is missing or unreadable, the default value is used
+    and a warning is printed to stderr.
+
+    Returns:
+        float: The calibration factor to convert raw HX711 counts to pounds.
+    """
+    cfg = configparser.ConfigParser()
+    if _CALIBRATION_CONFIG.exists():
+        cfg.read(_CALIBRATION_CONFIG)
+        try:
+            return cfg.getfloat("scale", "calibration_factor")
+        except (configparser.NoSectionError, configparser.NoOptionError,
+                ValueError) as exc:
+            print(f"Warning: could not read calibration.cfg ({exc}), "
+                  f"using default {_CALIBRATION_DEFAULT}", file=sys.stderr)
+    else:
+        print(f"Warning: calibration.cfg not found, "
+              f"using default {_CALIBRATION_DEFAULT}", file=sys.stderr)
+    return _CALIBRATION_DEFAULT
+
+
+CALIBRATION_FACTOR = _load_calibration_factor()
+"""float: Converts raw HX711 counts to pounds. Loaded from calibration.cfg."""
 
 HIGH_WEIGHT_MULTIPLIER = 0.9482
 """float: Correction factor for high-weight linearity."""
