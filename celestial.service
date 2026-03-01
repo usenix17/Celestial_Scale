@@ -18,7 +18,7 @@ Environment=GSETTINGS_BACKEND=memory
 Environment=SDL_VIDEO_WAYLAND_PREFER_LIBDECOR=0
 # Ensure XDG_RUNTIME_DIR exists (linger may not fire before this service starts)
 ExecStartPre=+/bin/install -d -o oas -g oas -m 0700 ${XDG_RUNTIME_DIR}
-ExecStart=/usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
+ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
 WorkingDirectory=/home/oas/celestial_scale
 
 # Watchdog: reboot if the main loop hangs for 30 seconds

@@ -39,7 +39,7 @@ echo "Installing system packages..."
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
-    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage seatd vim
+    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage seatd dbus vim
 
 # Pre-build fontconfig cache so pango doesn't scan fonts on first service start
 fc-cache -f
