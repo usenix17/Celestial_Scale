@@ -97,3 +97,4 @@ systemctl enable wpa_supplicant@wlan0.service
 systemctl enable celestial_scale.service
 
 echo "Bootstrap complete. Exit chroot and boot the hardware."
+echo ":)"
