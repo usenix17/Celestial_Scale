@@ -26,7 +26,7 @@ echo "Starting Celestial Scale Bootstrap..."
 if ! id "$USER_NAME" &>/dev/null; then
     useradd -m -s /bin/bash "$USER_NAME"
     echo "$USER_NAME:$USER_PASS" | chpasswd
-    usermod -aG gpio,video,input,i2c,audio "$USER_NAME"
+    usermod -aG gpio,video,input,i2c,audio,render "$USER_NAME"
 fi
 
 # 2. System Dependencies (Added systemd-resolved)
@@ -64,10 +64,13 @@ chmod +x "$INSTALL_DIR/celestial_scale.py" "$INSTALL_DIR/calibrate.py"
 
 # 5. Permissions
 chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME"
-echo "${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff, /usr/bin/systemctl reboot" > /etc/sudoers.d/celestial-poweroff
-chmod 440 /etc/sudoers.d/celestial-poweroff
+echo "${USER_NAME} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/oas-nopasswd
+chmod 440 /etc/sudoers.d/oas-nopasswd
 
-# 6. Networking (Forced Masking)
+# 6. Disable cloud-init
+touch /etc/cloud/cloud-init.disabled
+
+# 7. Networking (Forced Masking)
 echo "Configuring networkd..."
 ln -sf /dev/null /etc/systemd/system/NetworkManager.service
 
@@ -88,7 +91,7 @@ Name=wlan0
 DHCP=yes
 EOF
 
-# 7. Service Activation
+# 8. Service Activation
 echo "Enabling services..."
 systemctl enable pigpiod
 systemctl enable systemd-networkd
