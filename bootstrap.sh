@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # Script Name: bootstrap.sh
-# Version: 3.5 (The "Path-Universal" Production Version)
+# Version: 4.0 (The "No-Wayland" Production Version)
 # ==============================================================================
 
 set -e
@@ -32,10 +32,7 @@ usermod -aG gpio,video,input,i2c,audio,render,tty,seat "$USER_NAME"
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
-    libegl1 libgles2 libgl1-mesa-dri libgbm1 kbd cage seatd dbus vim rfkill
-
-# Pre-build fontconfig cache so pango doesn't scan fonts on first service start
-fc-cache -f
+    libgl1-mesa-dri libgbm1 kbd dbus vim rfkill
 
 # 3. pigpio Build (Standard Forking Service)
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
@@ -53,24 +50,11 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# 4. CRITICAL: seatd Dynamic Path Override
-# This solves the 203/EXEC error by finding the real binary location
-SEATD_BIN=$(type -p seatd)
-mkdir -p /etc/systemd/system/seatd.service.d
-cat <<EOF > /etc/systemd/system/seatd.service.d/override.conf
-[Service]
-ExecStart=
-ExecStart=$SEATD_BIN -g seat -n /run/seatd.sock
-Restart=always
-EOF
-
-# 5. Kiosk Service
+# 4. Kiosk Service (kmsdrm — no Wayland compositor needed)
 cat <<EOF > /etc/systemd/system/celestial_scale.service
 [Unit]
 Description=Celestial Scale Kiosk
-ConditionPathExists=/run/seatd.sock
-After=seatd.service pigpiod.service
-Requires=seatd.service
+After=pigpiod.service
 
 [Service]
 Type=simple
@@ -78,11 +62,7 @@ User=${USER_NAME}
 Group=${USER_NAME}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=/etc/celestial-env
-Environment=LIBSEAT_BACKEND=seatd
-Environment=SEATD_SOCK=/run/seatd.sock
-Environment=SDL_VIDEODRIVER=wayland
-Environment=WLR_RENDERER=pixman
-Environment=WLR_DRM_NO_ATOMIC=1
+Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=NO_AT_BRIDGE=1
 
 TTYPath=/dev/tty1
@@ -90,15 +70,13 @@ StandardInput=tty-force
 StandardOutput=journal
 StandardError=journal
 
-ExecStartPre=+/usr/bin/mkdir -p /run/user/1001
-ExecStartPre=+/usr/bin/chown oas:oas /run/user/1001
 ExecStartPre=+/usr/bin/chvt 1
 
-ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -s -- /usr/bin/python3 ${INSTALL_DIR}/celestial_scale.py
+ExecStart=/usr/bin/python3 ${INSTALL_DIR}/celestial_scale.py
 
 Restart=on-failure
 RestartSec=5
-SupplementaryGroups=video input render seat tty gpio
+SupplementaryGroups=video input render tty gpio
 
 [Install]
 WantedBy=multi-user.target
@@ -174,7 +152,7 @@ DHCP=yes
 EOF
 
 # 12. Activation
-systemctl enable pigpiod seatd ssh rfkill-unblock-wifi \
+systemctl enable pigpiod ssh rfkill-unblock-wifi \
     systemd-networkd systemd-resolved \
     wpa_supplicant@wlan0.service celestial_scale.service
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
