@@ -2,7 +2,7 @@
 
 The scale must be calibrated once after assembly to convert raw ADC counts into pounds. The calibration tool runs directly on the kiosk display — no SSH, keyboard, or terminal needed. All interaction is through the maintenance button on GPIO 18.
 
-The result is saved to `/etc/celestial-scale/calibration.json` and loaded automatically by `celestial_scale.py` on its next startup.
+The result is saved to `/home/oas/celestial_scale/calibration.json` and loaded automatically by `celestial_scale.py` on its next startup.
 
 ## What you need
 
@@ -72,7 +72,7 @@ On error, the screen shows a message and exits after 10 seconds. Check wiring an
 
 ## Calibration file
 
-`calibrate.py` writes `/etc/celestial-scale/calibration.json`:
+`calibrate.py` writes `/home/oas/celestial_scale/calibration.json`:
 
 ```json
 {

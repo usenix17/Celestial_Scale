@@ -84,15 +84,16 @@ HX711_SCK_PIN = 6
 """int: BCM GPIO pin for HX711 serial clock (Physical Pin 31)."""
 
 _CALIBRATION_DEFAULT_FACTOR = 420.0
-_CALIBRATION_CONFIG = Path("/etc/celestial-scale/calibration.json")
+_CALIBRATION_CONFIG = Path(__file__).resolve().parent / "calibration.json"
 
 
 def _load_calibration():
     """Loads (zero_offset_raw, calibration_factor) from calibration.json.
 
     calibration.json is written by calibrate.py after running the on-screen
-    calibration procedure.  If the file is missing or unreadable, defaults
-    are returned and a warning is printed to stderr.
+    calibration procedure and lives in the same directory as this script.
+    If the file is missing or unreadable, defaults are returned and a
+    warning is logged.
 
     Returns:
         tuple[int, float]: ``(zero_offset_raw, calibration_factor)`` where

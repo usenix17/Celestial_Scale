@@ -47,7 +47,7 @@ The script will then:
 - Install system dependencies (`pigpio`, `python3-pygame`, `python3-smbus`, etc.)
 - Download `celestial_scale.py`, `calibrate.py`, `adc.py`, and the font from GitHub
 - Download and enable the appropriate systemd service (`celestial-scale-hx711` or `celestial-scale-nau7802`)
-- Write a placeholder `/etc/celestial-scale/calibration.json`
+- Write a placeholder `/home/oas/celestial_scale/calibration.json`
 - Configure WiFi via `systemd-networkd` + `wpa_supplicant`
 - Apply boot config tweaks for kiosk use (X11, pigpiod, etc.)
 

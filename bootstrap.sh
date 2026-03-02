@@ -76,9 +76,8 @@ chmod +x "$INSTALL_DIR/celestial_scale.py" "$INSTALL_DIR/calibrate.py" \
          "$INSTALL_DIR/adc.py"
 chown -R "$USER_NAME:$USER_NAME" "/home/$USER_NAME"
 
-# 6b. Calibration config directory and default values
-mkdir -p /etc/celestial-scale
-cat > /etc/celestial-scale/calibration.json <<'CALJSON'
+# 6b. Default calibration values (alongside the scripts)
+cat > "$INSTALL_DIR/calibration.json" <<'CALJSON'
 {
   "_note": "Run calibrate.py to calibrate. Values below are placeholders.",
   "zero_offset": 0,
@@ -179,6 +178,6 @@ echo ""
 echo "=== Bootstrap Summary ==="
 echo "ADC backend:   ${ADC_NAME}"
 echo "Service:       ${ADC_SVC}.service"
-echo "Calibration:   /etc/celestial-scale/calibration.json"
+echo "Calibration:   $INSTALL_DIR/calibration.json"
 echo "               (run calibrate.py to calibrate before use)"
 echo "Bootstrap complete. The system is ready for flight."

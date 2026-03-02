@@ -11,7 +11,7 @@ Procedure:
     2. Place known weight → button captured automatically.
     3. Enter the known weight in lbs using the button as a digit selector.
     4. Calibration factor and zero offset are written to
-       /etc/celestial-scale/calibration.json.
+       calibration.json in the same directory as this script.
     5. The main celestial_scale service restarts automatically
        (systemd Restart=always) and picks up the new values.
 
@@ -50,7 +50,7 @@ except ImportError:
 # ----------------------------
 # Config
 # ----------------------------
-_CONFIG_DIR = Path("/etc/celestial-scale")
+_CONFIG_DIR = Path(__file__).resolve().parent
 _CALIBRATION_CONFIG = _CONFIG_DIR / "calibration.json"
 
 SAMPLE_COUNT = 20
@@ -176,10 +176,9 @@ def draw_progress_bar(screen, progress, width, height):
 
 
 def write_calibration_json(zero_offset, calibration_factor):
-    """Writes calibration values to /etc/celestial-scale/calibration.json.
+    """Writes calibration values to calibration.json in the install directory.
 
-    Creates the directory if it does not exist.  The file is read by
-    celestial_scale.py on startup.
+    The file lives alongside celestial_scale.py and is read by it on startup.
 
     Args:
         zero_offset: Raw ADC count with no weight on the scale (int).
