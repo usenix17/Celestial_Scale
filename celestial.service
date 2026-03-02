@@ -1,43 +1,36 @@
 [Unit]
 Description=Celestial Scale Kiosk
-After=pigpiod.service seatd.service systemd-logind.service
-Requires=pigpiod.service seatd.service
-StartLimitIntervalSec=60
-StartLimitBurst=5
+ConditionPathExists=/run/seatd.sock
+After=seatd.service pigpiod.service
+Requires=seatd.service
 
 [Service]
-Type=notify
-NotifyAccess=all
+Type=simple
 User=oas
-EnvironmentFile=/etc/celestial-env
-Environment=SDL_VIDEODRIVER=wayland
-# Prevent GLib/dconf from trying to connect to a D-Bus session bus (none exists in a service)
-Environment=GSETTINGS_BACKEND=memory
-# Disable libdecor (Wayland client-side decorations) - cage is fullscreen, no decorations needed.
-# libdecor loads pango/fontconfig which hangs in a minimal service environment.
-Environment=SDL_VIDEO_WAYLAND_PREFER_LIBDECOR=0
-# Ensure XDG_RUNTIME_DIR exists (linger may not fire before this service starts)
-ExecStartPre=+/bin/install -d -o oas -g oas -m 0700 ${XDG_RUNTIME_DIR}
-ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
+Group=oas
 WorkingDirectory=/home/oas/celestial_scale
+EnvironmentFile=/etc/celestial-env
+Environment=LIBSEAT_BACKEND=seatd
+Environment=SEATD_SOCK=/run/seatd.sock
+Environment=SDL_VIDEODRIVER=wayland
+Environment=WLR_RENDERER=pixman
+Environment=WLR_DRM_NO_ATOMIC=1
+Environment=NO_AT_BRIDGE=1
 
-# Watchdog: reboot if the main loop hangs for 30 seconds
-WatchdogSec=120
-WatchdogSignal=SIGKILL
-
-# Auto-restart on crash (up to 5 times in 60 seconds)
-Restart=on-failure
-RestartSec=3
-
+TTYPath=/dev/tty1
+StandardInput=tty-force
 StandardOutput=journal
 StandardError=journal
 
-# Scheduling priority for timing-sensitive GPIO
-Nice=-20
-IOSchedulingClass=realtime
+ExecStartPre=+/usr/bin/mkdir -p /run/user/1001
+ExecStartPre=+/usr/bin/chown oas:oas /run/user/1001
+ExecStartPre=+/usr/bin/chvt 1
 
-# GPU/display access
-SupplementaryGroups=video input gpio render seat tty
+ExecStart=/usr/bin/dbus-run-session /usr/bin/cage -s -- /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
+
+Restart=on-failure
+RestartSec=5
+SupplementaryGroups=video input render seat tty gpio
 
 [Install]
 WantedBy=multi-user.target
