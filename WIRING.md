@@ -130,6 +130,27 @@ PI ZERO GPIO HEADER REFERENCE (relevant pins only):
                     (39) ○ ○  (40)
 
 
+DECOUPLING CAPACITORS:
+======================
+Place all caps as close to the component's power pins as possible.
+Electrolytic caps are polarized — observe polarity (+ to VCC, - to GND).
+
+  Bus bar (at the bar itself):
+    1 × 470 µF electrolytic       across +5V and GND rails
+
+  Raspberry Pi (at micro-USB power input):
+    1 × 100 µF electrolytic       across +5V and GND
+    1 × 0.1 µF ceramic            across +5V and GND
+
+  HDMI Screen (at power input connector):
+    1 × 100 µF electrolytic       across +5V and GND
+    1 × 0.1 µF ceramic            across +5V and GND
+
+  HX711 (MOST IMPORTANT — at VCC and GND pins):
+    1 × 10–47 µF electrolytic     across VCC and GND
+    1 × 0.1 µF ceramic            across VCC and GND
+
+
 SUMMARY OF CONNECTIONS:
 ========================
   Meanwell PSU +5V  ──[inline fuse]──► +5V bus bar
