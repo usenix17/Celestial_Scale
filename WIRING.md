@@ -113,7 +113,42 @@ COMBINER → HX711/NAU7802 WIRING (5 wires out):
   BLACK  → E- (Excitation-)
   WHITE  → A+ (Signal+)
   GREEN  → A- (Signal-)
-  YELLOW → GND / shield (optional)
+  YELLOW → GND / shield (optional, see CAT5e note below)
+
+
+CAT5e WIRING — TWO CABLE RUNS
+==============================
+Using CAT5e puts each differential pair on a twisted pair, keeping
+common-mode noise out of both the analog bridge and the digital lines.
+Two separate cable runs are used — one analog, one digital — so clock
+pulses on the digital run can never couple into the millivolt-level
+bridge signal.
+
+  CABLE A: Combiner Board → ADC  (analog path — most sensitive)
+  ──────────────────────────────────────────────────────────────
+  Combiner    CAT5e color     Function          Twisted with
+  ──────────  ──────────────  ────────────────  ──────────────
+  E+ (Red)    Orange          Excitation +      Orange-White
+  E- (Black)  Orange-White    Excitation -      Orange
+  S+ (White)  Blue            Signal +          Blue-White
+  S- (Green)  Blue-White      Signal -          Blue
+
+  The YELLOW shield wire from the combiner is left unconnected at
+  the ADC end and tied to GND at the combiner end only (single-point
+  grounding prevents a ground loop through the shield).
+
+  CABLE B: ADC → Raspberry Pi  (digital path)
+  ──────────────────────────────────────────────────────────────
+  ADC pin     CAT5e color     Function          Twisted with
+  ──────────  ──────────────  ────────────────  ──────────────
+  VCC         Brown           5V power          Brown-White
+  GND         Brown-White     System ground     Brown
+  DT / SDA    Green           Data (GPIO 5)     Green-White
+  SC / SCL    Green-White     Clock (GPIO 6)    Green
+
+  Clock and data are twisted together so any noise induced on the
+  cable appears identically on both lines; the Pi's logic threshold
+  rejects the common-mode component.
 
 
 PI ZERO GPIO HEADER REFERENCE (relevant pins only):
