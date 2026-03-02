@@ -94,15 +94,26 @@ SIGNAL WIRING
                └─────────────┘                      └─────────────┘
 
 
-LOAD CELL WIRING (each cell has 4 wires):
+LOAD CELL WIRING (each cell has 3 wires):
 ==========================================
-Each load cell connects to the combiner board.
-Match wire colors to the combiner's labeled terminals.
-Typical color coding:
-  RED   = E+ (Excitation+)
-  BLACK = E- (Excitation-)
-  WHITE = S+ (Signal+)
-  GREEN = S- (Signal-)  [may be bare/shield wire on some cells]
+Each single-point load cell connects to the combiner board's +, -, and C terminals.
+The combiner wires all four into a Wheatstone bridge configuration.
+
+Typical color coding (verify with a multimeter — colors can vary by manufacturer):
+  RED   = + (Excitation)
+  BLACK = - (Excitation)
+  WHITE = C (Center tap / signal)
+
+  ⚠ To confirm which wire is C: measure resistance between all three pairs.
+    The two highest-resistance pairs share the C wire.
+
+COMBINER → HX711 WIRING (5 wires out):
+========================================
+  RED    → E+ (Excitation+)
+  BLACK  → E- (Excitation-)
+  WHITE  → A+ (Signal+)
+  GREEN  → A- (Signal-)
+  YELLOW → GND / shield (optional)
 
 
 PI ZERO GPIO HEADER REFERENCE (relevant pins only):
@@ -144,7 +155,7 @@ Electrolytic caps are polarized — observe polarity (+ to VCC, - to GND).
 
   HDMI Screen (at power input connector):
     1 × 100 µF electrolytic       across +5V and GND
-    1 × 0.1 µF ceramic            across +5V and GND
+    1 × 0.1 µF ceramic            across VCC and GND
 
   HX711 (MOST IMPORTANT — at VCC and GND pins):
     1 × 10–47 µF electrolytic     across VCC and GND
