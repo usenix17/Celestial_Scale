@@ -8,17 +8,13 @@ User=oas
 Group=oas
 WorkingDirectory=/home/oas/celestial_scale
 EnvironmentFile=/etc/celestial-env
-Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=DISPLAY=:0
 Environment=NO_AT_BRIDGE=1
 
-TTYPath=/dev/tty1
-StandardInput=tty-force
 StandardOutput=journal
 StandardError=journal
 
-ExecStartPre=+/usr/bin/chvt 1
-
-ExecStart=/usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py
+ExecStart=/usr/bin/xinit /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py -- :0 vt1 -nolisten tcp
 
 Restart=on-failure
 RestartSec=5

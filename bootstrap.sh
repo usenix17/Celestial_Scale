@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # Script Name: bootstrap.sh
-# Version: 4.0 (The "No-Wayland" Production Version)
+# Version: 5.0 (The X11 Production Version)
 # ==============================================================================
 
 set -e
@@ -32,7 +32,8 @@ usermod -aG gpio,video,input,i2c,audio,render,tty,seat "$USER_NAME"
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
-    libegl1 libgl1-mesa-dri libgbm1 kbd dbus vim rfkill
+    libgl1-mesa-dri kbd dbus vim rfkill \
+    xserver-xorg xinit xserver-xorg-video-modesetting x11-xserver-utils
 
 # 3. pigpio Build (Standard Forking Service)
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
@@ -50,7 +51,9 @@ WantedBy=multi-user.target
 EOF
 fi
 
-# 4. Kiosk Service (kmsdrm — no Wayland compositor needed)
+# 4. Kiosk Service (X11 via xinit — no Wayland compositor needed)
+chmod u+s /usr/lib/xorg/Xorg
+
 cat <<EOF > /etc/systemd/system/celestial_scale.service
 [Unit]
 Description=Celestial Scale Kiosk
@@ -62,17 +65,13 @@ User=${USER_NAME}
 Group=${USER_NAME}
 WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=/etc/celestial-env
-Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=DISPLAY=:0
 Environment=NO_AT_BRIDGE=1
 
-TTYPath=/dev/tty1
-StandardInput=tty-force
 StandardOutput=journal
 StandardError=journal
 
-ExecStartPre=+/usr/bin/chvt 1
-
-ExecStart=/usr/bin/python3 ${INSTALL_DIR}/celestial_scale.py
+ExecStart=/usr/bin/xinit /usr/bin/python3 ${INSTALL_DIR}/celestial_scale.py -- :0 vt1 -nolisten tcp
 
 Restart=on-failure
 RestartSec=5
