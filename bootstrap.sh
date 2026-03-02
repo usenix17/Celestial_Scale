@@ -53,6 +53,8 @@ fi
 
 # 4. Kiosk Service (X11 via xinit — no Wayland compositor needed)
 chmod u+s /usr/lib/xorg/Xorg
+mkdir -p /etc/X11
+printf "allowed_users=anybody\nneeds_root_rights=yes\n" > /etc/X11/Xwrapper.config
 
 cat <<EOF > /etc/systemd/system/celestial_scale.service
 [Unit]
