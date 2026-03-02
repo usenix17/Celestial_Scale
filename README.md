@@ -105,7 +105,7 @@ The following services were enabled on a headless kiosk with no need for printin
 ## Recommendations for Rebuild
 
 1. **Replace the SD card** with a name-brand card (Samsung, SanDisk) from a reputable seller. Counterfeit and failing SD cards are the most common Pi failure mode.
-2. **Replace the HX711 board.** SparkFun or generic green breakouts are functionally identical (~$6–11).
+2. **Replace the HX711/NAU7802 board.** SparkFun or generic green breakouts are functionally identical (~$6–11).
 3. **Eliminate the RP2040.** Use `pigpio` on the Pi for hardware-timed HX711 reads. Fewer components, fewer wires, fewer failure modes.
 4. **Power via micro-USB, not GPIO header.** This preserves the onboard polyfuse protection.
 5. **Use Raspberry Pi OS Lite.** No desktop environment, no cloud-init, no unnecessary services. Flash without Raspberry Pi Imager customizations to avoid cloud-init injection.
@@ -116,18 +116,16 @@ The following services were enabled on a headless kiosk with no need for printin
 ## Recommended Signal Chain
 
 ```
-4x Load Cells → Combiner Board → HX711 (E+/E–/A+/A–) → Pi GPIO 5 & 6 → HDMI Display
+4x Load Cells → Combiner Board → HX711/NAU7802 (E+/E–/A+/A–) → Pi GPIO 5 & 6 → HDMI Display
 ```
 
 **GPIO Pin Assignments:**
 
 | Function | GPIO | Physical Pin |
 |----------|------|-------------|
-| HX711 DOUT | GPIO 5 | Pin 29 |
-| HX711 SCK | GPIO 6 | Pin 31 |
+| HX711/NAU7802 DOUT | GPIO 5 | Pin 29 |
+| HX711/NAU7802 SCK | GPIO 6 | Pin 31 |
 | Tare Button | GPIO 18 | Pin 12 |
-| HX711 VCC | 5V | Pin 2 |
-| HX711 GND | GND | Pin 6 |
 | Button GND | GND | Pin 14 |
 
 ---

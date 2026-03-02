@@ -17,8 +17,11 @@ Requires:
 """
 
 import abc
+import logging
 import time
 from typing import Optional
+
+_log = logging.getLogger(__name__)
 
 try:
     import pigpio
@@ -218,12 +221,12 @@ class HX711WeightReader(WeightReader):
         self._hx = None
 
         if not pigpio:
-            print("pigpio not available — HX711WeightReader running in demo mode")
+            _log.warning("pigpio not available — HX711WeightReader running in demo mode")
             return
 
         self._pi = pigpio.pi()
         if not self._pi.connected:
-            print("Could not connect to pigpiod — HX711WeightReader in demo mode")
+            _log.warning("Could not connect to pigpiod — HX711WeightReader in demo mode")
             self._pi = None
             return
 
@@ -331,14 +334,14 @@ class NAU7802WeightReader(WeightReader):
         self._bus = None
 
         if not smbus2:
-            print("smbus2 not available — NAU7802WeightReader in demo mode")
+            _log.warning("smbus2 not available — NAU7802WeightReader in demo mode")
             return
 
         try:
             self._bus = smbus2.SMBus(self._I2C_BUS)
             self._init_chip()
         except OSError as exc:
-            print(f"NAU7802 I2C open failed ({exc}) — running in demo mode")
+            _log.warning("NAU7802 I2C open failed (%s) — running in demo mode", exc)
             self._bus = None
 
     def _write(self, reg, value):

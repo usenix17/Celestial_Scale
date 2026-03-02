@@ -28,6 +28,7 @@ Requires:
 
 import argparse
 import json
+import logging
 import math
 import os
 import statistics
@@ -41,6 +42,8 @@ from pathlib import Path
 import pygame
 
 from adc import HX711WeightReader, NAU7802WeightReader
+
+_log = logging.getLogger(__name__)
 
 try:
     from gpiozero import Button
@@ -101,16 +104,59 @@ def _load_calibration():
             data = json.loads(_CALIBRATION_CONFIG.read_text(encoding="utf-8"))
             return int(data["zero_offset"]), float(data["calibration_factor"])
         except (KeyError, ValueError, json.JSONDecodeError) as exc:
-            print(f"Warning: could not read calibration.json ({exc}), "
-                  f"using defaults", file=sys.stderr)
+            _log.warning("Could not read calibration.json (%s), using defaults", exc)
     else:
-        print(f"Warning: {_CALIBRATION_CONFIG} not found, "
-              f"using defaults", file=sys.stderr)
+        _log.warning("%s not found, using defaults", _CALIBRATION_CONFIG)
     return 0, _CALIBRATION_DEFAULT_FACTOR
 
 
 _zero_offset_raw, CALIBRATION_FACTOR = _load_calibration()
 """float: Converts net raw ADC counts to pounds. Loaded from calibration.json."""
+
+
+def setup_logging(level: str) -> None:
+    """Configures root logger: JournalHandler if available, else StreamHandler.
+
+    Args:
+        level: Log level string — "DEBUG", "INFO", "WARNING", "ERROR".
+    """
+    try:
+        from systemd.journal import JournalHandler  # pylint: disable=import-outside-toplevel
+        handler = JournalHandler()
+    except ImportError:
+        handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+    logging.root.addHandler(handler)
+    logging.root.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+
+class _ReadMetrics:
+    """Accumulates ADC read statistics for periodic health reporting.
+
+    Resets every REPORT_INTERVAL seconds to give a rolling per-minute view.
+    """
+
+    REPORT_INTERVAL = 60.0
+    """float: Seconds between periodic health log emissions."""
+
+    def __init__(self):
+        """Initializes all counters and starts the reporting timer."""
+        self.reads_ok = 0
+        self.reads_none = 0
+        self.exceptions = 0
+        self._period_start = time.monotonic()
+
+    def reset(self):
+        """Resets all counters and restarts the timing period."""
+        self.reads_ok = 0
+        self.reads_none = 0
+        self.exceptions = 0
+        self._period_start = time.monotonic()
+
+    def should_report(self) -> bool:
+        """Returns True when the reporting interval has elapsed."""
+        return (time.monotonic() - self._period_start) >= self.REPORT_INTERVAL
+
 
 HIGH_WEIGHT_MULTIPLIER = 0.9482
 """float: Correction factor for high-weight linearity."""
@@ -283,6 +329,7 @@ class WeightReaderThread(threading.Thread):  # pylint: disable=too-many-instance
         self._needs_tare = zero_offset_raw == 0
         self._buffer = []
         self._stable_since = 0.0
+        self._metrics = _ReadMetrics()
 
     def do_software_tare(self):
         """Flags the reader to capture the next reading as the zero offset."""
@@ -325,14 +372,32 @@ class WeightReaderThread(threading.Thread):  # pylint: disable=too-many-instance
             raw = self._reader.read_raw()
             if raw is not None:
                 self.state.connected = True
+                self._metrics.reads_ok += 1
                 self._process_reading(raw)
             else:
                 # Not ready yet (NAU7802 between cycles) or demo mode
+                self._metrics.reads_none += 1
                 time.sleep(0.02)
         except Exception as exc:  # pylint: disable=broad-except
             self.state.connected = False
-            print(f"Weight reader error: {exc}")
+            self._metrics.exceptions += 1
+            _log.error("Weight reader error: %s", exc)
             time.sleep(0.5)
+
+        if self._metrics.should_report():
+            _log.info(
+                "ADC health [60s]: ok=%d none=%d exc=%d variance=%.3f lb connected=%s",
+                self._metrics.reads_ok, self._metrics.reads_none,
+                self._metrics.exceptions, self.state.variance,
+                self.state.connected,
+                extra={
+                    "READS_OK": self._metrics.reads_ok,
+                    "READS_NONE": self._metrics.reads_none,
+                    "EXCEPTIONS": self._metrics.exceptions,
+                    "VARIANCE_LB": round(self.state.variance, 3),
+                },
+            )
+            self._metrics.reset()
 
     def _process_reading(self, raw):
         """Processes a raw ADC value into a filtered weight in pounds.
@@ -786,11 +851,16 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
     if maint_btn.is_pressed:
         if ctx.btn_press_start == 0.0:
             ctx.btn_press_start = now
-        if (now - ctx.btn_press_start) > SHUTDOWN_HOLD_SEC:
+            _log.debug("Button pressed")
+        if (ctx.state != STATE_SHUTDOWN
+                and (now - ctx.btn_press_start) > SHUTDOWN_HOLD_SEC):
+            _log.info("Shutdown triggered (held %.1f s)",
+                      now - ctx.btn_press_start)
             ctx.state = STATE_SHUTDOWN
     elif ctx.btn_press_start > 0.0:
         press_duration = now - ctx.btn_press_start
         ctx.btn_press_start = 0.0
+        _log.debug("Button released (duration=%.2f s)", press_duration)
 
         if ctx.state != STATE_SHUTDOWN and press_duration < 5.0:
             # Track this release for calibration rapid-press detection
@@ -799,6 +869,8 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
                                    if now - t < _CAL_PRESS_WINDOW]
 
             if len(btn_press_times) >= _CAL_PRESS_COUNT:
+                _log.info("Calibration shortcut triggered (5 presses in %.1f s)",
+                          _CAL_PRESS_WINDOW)
                 btn_press_times.clear()
                 ui.screen.fill(COLOR_BG)
                 blit_centered(ui.screen, ui.cache["entering_cal"],
@@ -813,6 +885,7 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
                 )
                 sys.exit(0)
 
+            _log.info("Tare triggered (press_duration=%.2f s)", press_duration)
             handle_tare(ui, reader)
             ctx.state = STATE_IDLE
             ctx.captured_weight = 0.0
@@ -853,6 +926,7 @@ def _update_idle(ctx, reader, now):
         ctx.captured_weight = live_weight
         ctx.state = STATE_CALC
         ctx.state_start = now
+        _log.info("IDLE→CALC weight=%.1f lb", live_weight)
 
 
 def _update_calc(ctx, reader_state, now):
@@ -872,6 +946,9 @@ def _update_calc(ctx, reader_state, now):
         ctx.captured_weight = live_weight
 
     if live_weight < (TRIGGER_THRESHOLD_LB - 1.0):
+        elapsed = now - ctx.state_start
+        _log.info("CALC→IDLE weight dropped (%.1f lb, elapsed=%.1f s)",
+                  live_weight, elapsed)
         ctx.state = STATE_IDLE
         return
 
@@ -880,9 +957,16 @@ def _update_calc(ctx, reader_state, now):
     if (reader_state.is_stable
             and reader_state.variance < CALC_VARIANCE_THRESHOLD
             and elapsed > 1.0):
+        _log.info(
+            "CALC→RESULTS stable lock-in at %.1f lb "
+            "(variance=%.3f lb, elapsed=%.1f s)",
+            ctx.captured_weight, reader_state.variance, elapsed,
+        )
         ctx.state = STATE_RESULTS
         ctx.state_start = now
     elif elapsed > CALC_SECONDS:
+        _log.info("CALC→RESULTS timeout at %.1f lb (elapsed=%.1f s)",
+                  ctx.captured_weight, elapsed)
         ctx.state = STATE_RESULTS
         ctx.state_start = now
 
@@ -902,10 +986,13 @@ def _update_results(ctx, live_weight, now):
         if ctx.step_off_timer == 0.0:
             ctx.step_off_timer = now
         if (now - ctx.step_off_timer) > STEP_OFF_DELAY:
+            _log.info("RESULTS→IDLE user stepped off (time_in_results=%.1f s)",
+                      ctx.step_off_timer - ctx.state_start)
             ctx.state = STATE_IDLE
     else:
         ctx.step_off_timer = 0.0
     if now - ctx.state_start > RESULTS_TIMEOUT:
+        _log.info("RESULTS→IDLE timeout (%.0f s)", RESULTS_TIMEOUT)
         ctx.state = STATE_IDLE
 
 
@@ -977,7 +1064,7 @@ def _draw(ui, ctx, reader_state, now):
 # ----------------------------
 # Main
 # ----------------------------
-def main():  # pylint: disable=too-many-locals
+def main():  # pylint: disable=too-many-locals,too-many-statements
     """Entry point for the Celestial Scale application.
 
     Initializes pygame, the selected ADC backend, systemd watchdog, and
@@ -986,13 +1073,18 @@ def main():  # pylint: disable=too-many-locals
 
     Command-line args:
         --adc {hx711,nau7802}: ADC backend to use. Defaults to hx711.
+        --log-level {DEBUG,INFO,WARNING,ERROR}: Logging verbosity. Defaults to INFO.
     """
     parser = argparse.ArgumentParser(description="Celestial Scale Kiosk")
     parser.add_argument("--adc", choices=["hx711", "nau7802"],
                         default="hx711",
                         help="ADC backend: hx711 (pigpio) or nau7802 (I2C)")
+    parser.add_argument("--log-level",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        default="INFO",
+                        help="Logging verbosity (default: INFO)")
     args = parser.parse_args()
-    print(f"ADC backend: {args.adc}", flush=True)
+    setup_logging(args.log_level)
 
     watchdog = Watchdog()
 
@@ -1015,6 +1107,13 @@ def main():  # pylint: disable=too-many-locals
         screen = pygame.display.set_mode((0, 0), flags)
     pygame.mouse.set_visible(WINDOWED_DEV)
     width, height = screen.get_size()
+
+    _log.info("ADC backend: %s", args.adc)
+    _log.info("Calibration: zero_offset=%d factor=%.4f (file=%s)",
+              _zero_offset_raw, CALIBRATION_FACTOR, _CALIBRATION_CONFIG)
+    _log.info("Display: %dx%d watchdog=%s", width, height,
+              f"enabled ({watchdog.interval:.1f}s kick)"
+              if watchdog.enabled else "disabled")
 
     fonts = {
         "title": load_font(height * 0.07),

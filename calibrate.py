@@ -28,6 +28,7 @@ Requires:
 
 import argparse
 import json
+import logging
 import math
 import statistics
 import sys
@@ -38,6 +39,8 @@ from typing import Optional
 import pygame
 
 from adc import HX711WeightReader, NAU7802WeightReader, WeightReader
+
+_log = logging.getLogger(__name__)
 
 try:
     from gpiozero import Button
@@ -103,6 +106,22 @@ COLOR_NASA_RED = (252, 61, 33)
 
 BASE_DIR = Path(__file__).resolve().parent
 FONT_PATH = BASE_DIR / "assets" / "fonts" / "Nasalization Rg.otf"
+
+
+def setup_logging(level: str) -> None:
+    """Configures root logger: JournalHandler if available, else StreamHandler.
+
+    Args:
+        level: Log level string — "DEBUG", "INFO", "WARNING", "ERROR".
+    """
+    try:
+        from systemd.journal import JournalHandler  # pylint: disable=import-outside-toplevel
+        handler = JournalHandler()
+    except ImportError:
+        handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+    logging.root.addHandler(handler)
+    logging.root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 
 # ----------------------------
@@ -173,8 +192,15 @@ def write_calibration_json(zero_offset, calibration_factor):
         "zero_offset": int(zero_offset),
         "calibration_factor": round(float(calibration_factor), 4),
     }
-    _CALIBRATION_CONFIG.write_text(
-        json.dumps(data, indent=2), encoding="utf-8")
+    try:
+        _CALIBRATION_CONFIG.write_text(json.dumps(data, indent=2),
+                                       encoding="utf-8")
+        _log.info("Calibration written: zero_offset=%d factor=%.4f path=%s",
+                  int(zero_offset), round(float(calibration_factor), 4),
+                  _CALIBRATION_CONFIG)
+    except OSError as exc:
+        _log.error("Failed to write calibration: %s", exc)
+        raise
 
 
 # ----------------------------
@@ -317,6 +343,7 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
     }
 
     step = STEP_CLEAR
+    _log.info("Step: %s", step)
     zero_readings: list = []
     load_readings: list = []
     zero_offset = 0
@@ -367,6 +394,7 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                 zero_readings = []
                 step = STEP_ZERO
                 step_start = now
+                _log.info("Step: %s", step)
 
         elif step == STEP_ZERO:
             raw = reader.read_raw()
@@ -378,9 +406,14 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                            step_index=2)
             if len(zero_readings) >= SAMPLE_COUNT:
                 zero_offset = int(statistics.median(zero_readings))
+                _log.debug("Zero readings: mean=%.0f stdev=%.1f n=%d",
+                           statistics.mean(zero_readings),
+                           statistics.stdev(zero_readings),
+                           len(zero_readings))
                 load_readings = []
                 step = STEP_PLACE
                 step_start = now
+                _log.info("Step: %s (zero_offset=%d)", step, zero_offset)
 
         elif step == STEP_PLACE:
             _draw_prompt(screen, fonts, width, height,
@@ -391,6 +424,7 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                 load_readings = []
                 step = STEP_LOAD
                 step_start = now
+                _log.info("Step: %s", step)
 
         elif step == STEP_LOAD:
             raw = reader.read_raw()
@@ -403,12 +437,18 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
             if len(load_readings) >= SAMPLE_COUNT:
                 if not load_readings or not zero_readings:
                     error_msg = "No readings received. Check wiring."
+                    _log.error("Step: %s — %s", STEP_ERROR, error_msg)
                     step = STEP_ERROR
                     step_start = now
                 else:
+                    _log.debug("Load readings: mean=%.0f stdev=%.1f n=%d",
+                               statistics.mean(load_readings),
+                               statistics.stdev(load_readings),
+                               len(load_readings))
                     entry = DigitEntry()
                     step = STEP_ENTER
                     step_start = now
+                    _log.info("Step: %s", step)
 
         elif step == STEP_ENTER:
             _draw_digit_entry(screen, fonts, width, height, entry)
@@ -425,6 +465,10 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                 step, error_msg, cal_factor = _confirm_entry(
                     entry, zero_offset, load_readings)
                 step_start = now
+                if step == STEP_DONE:
+                    _log.info("Step: %s (factor=%.4f)", step, cal_factor)
+                else:
+                    _log.error("Step: %s — %s", step, error_msg)
 
         elif step == STEP_DONE:
             elapsed = now - step_start
@@ -598,8 +642,13 @@ def main() -> None:
     parser.add_argument("--adc", choices=["hx711", "nau7802"],
                         default="hx711",
                         help="ADC backend: hx711 (pigpio) or nau7802 (I2C)")
+    parser.add_argument("--log-level",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                        default="INFO",
+                        help="Logging verbosity (default: INFO)")
     args = parser.parse_args()
-    print(f"Calibration starting with ADC backend: {args.adc}", flush=True)
+    setup_logging(args.log_level)
+    _log.info("Calibration starting with ADC backend: %s", args.adc)
 
     reader = _build_reader(args.adc)
 

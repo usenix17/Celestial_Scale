@@ -39,12 +39,17 @@ Back inside the chroot, run the script:
 bash /root/bootstrap.sh
 ```
 
-When prompted, enter your WiFi SSID and password. The script will then:
-- Configure WiFi via `systemd-networkd`
-- Install system dependencies (`pigpio`, `python3-pygame`, etc.)
-- Download `celestial_scale.py` and `celestial.service` from GitHub
-- Enable the `pigpiod` and `celestial_scale` systemd services
-- Apply boot config tweaks for kiosk use
+When prompted:
+- **WiFi SSID and password** — used to configure `wpa_supplicant` for first-boot networking
+- **ADC backend** — choose `[1] HX711` (GPIO bit-bang via pigpio) or `[2] NAU7802` (I2C)
+
+The script will then:
+- Install system dependencies (`pigpio`, `python3-pygame`, `python3-smbus`, etc.)
+- Download `celestial_scale.py`, `calibrate.py`, `adc.py`, and the font from GitHub
+- Download and enable the appropriate systemd service (`celestial-scale-hx711` or `celestial-scale-nau7802`)
+- Write a placeholder `/etc/celestial-scale/calibration.json`
+- Configure WiFi via `systemd-networkd` + `wpa_supplicant`
+- Apply boot config tweaks for kiosk use (X11, pigpiod, etc.)
 
 ### 4. Exit the chroot
 
@@ -57,3 +62,34 @@ The cleanup trap in `pi-chroot.sh` will unmount everything automatically.
 ---
 
 The SD card is now ready. Insert it into the Pi and power it on — the scale application will start automatically on boot.
+
+## Calibration
+
+The scale ships with a placeholder calibration. Before use, run the on-screen calibration procedure using the maintenance button. See [CALIBRATE.md](CALIBRATE.md) for full instructions.
+
+## Viewing logs
+
+```bash
+# Live log stream
+journalctl -u celestial-scale-hx711 -f
+
+# ADC health metrics (structured fields logged every 60 s)
+journalctl -u celestial-scale-hx711 READS_OK=
+
+# Increase verbosity (edit the service or pass flag manually)
+python3 /home/oas/celestial_scale/celestial_scale.py --adc hx711 --log-level DEBUG
+```
+
+## Service management
+
+```bash
+# HX711 backend
+sudo systemctl status celestial-scale-hx711
+sudo systemctl restart celestial-scale-hx711
+
+# NAU7802 backend
+sudo systemctl status celestial-scale-nau7802
+sudo systemctl restart celestial-scale-nau7802
+```
+
+Only one backend service should be enabled at a time. The bootstrap script masks the unused one automatically.

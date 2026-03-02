@@ -22,7 +22,7 @@ POWER DISTRIBUTION (star topology)
     │  PI ZERO 2W  │                │ │  │  │
     └──────────────┘◄───────────────┘ │  │  │
        HDMI Screen ◄──────────────────┘  │  │
-       HX711 GND   ◄─────────────────────┘  │
+       HX711/NAU7802 GND ◄───────────────┘  │
        Screen GND  ◄────────────────────────┘
 
 
@@ -53,7 +53,7 @@ SIGNAL WIRING
                                                │  │
                               ┌────────────────┴──┴──────────────┐
                               │  SPARKFUN HX711 (Load Cell Amp)  │
-                              │                                  │
+                              │         or NAU7802               │
                               │  SCK  ◄── GPIO 6                 │
                               │  DOUT ──► GPIO 5                 │
                               │  GND  ◄── GND bus bar            │
@@ -107,8 +107,8 @@ Typical color coding (verify with a multimeter — colors can vary by manufactur
   ⚠ To confirm which wire is C: measure resistance between all three pairs.
     The two highest-resistance pairs share the C wire.
 
-COMBINER → HX711 WIRING (5 wires out):
-========================================
+COMBINER → HX711/NAU7802 WIRING (5 wires out):
+=============================================
   RED    → E+ (Excitation+)
   BLACK  → E- (Excitation-)
   WHITE  → A+ (Signal+)
@@ -133,8 +133,8 @@ PI ZERO GPIO HEADER REFERENCE (relevant pins only):
                     (23) ○ ○  (24)
                     (25) ○ ○  (26)
                     (27) ○ ○  (28)
- HX711 DOUT GPIO 5  (29) ○ ○  (30)
- HX711 SCK  GPIO 6  (31) ○ ○  (32)
+   AMP DOUT GPIO 5  (29) ○ ○  (30)
+   AMP SCK  GPIO 6  (31) ○ ○  (32)
                     (33) ○ ○  (34)
                     (35) ○ ○  (36)
                     (37) ○ ○  (38)
@@ -157,7 +157,7 @@ Electrolytic caps are polarized — observe polarity (+ to VCC, - to GND).
     1 × 100 µF electrolytic       across +5V and GND
     1 × 0.1 µF ceramic            across VCC and GND
 
-  HX711 (MOST IMPORTANT — at VCC and GND pins):
+  HX711/NAU7802 (MOST IMPORTANT — at VCC and GND pins):
     1 × 10–47 µF electrolytic     across VCC and GND
     1 × 0.1 µF ceramic            across VCC and GND
 
@@ -169,14 +169,14 @@ SUMMARY OF CONNECTIONS:
 
   +5V bus bar ──► Pi micro-USB (via cable; Pi has onboard polyfuse)
   +5V bus bar ──► HDMI Screen
-  +5V bus bar ──► HX711 VCC
+  +5V bus bar ──► HX711/NAU7802 VCC
   GND bus bar ──► Pi GND (via micro-USB cable)
   GND bus bar ──► Screen GND
-  GND bus bar ──► HX711 GND
+  GND bus bar ──► HX711/NAU7802 GND
 
   Pi mini-HDMI        ──► HDMI Screen
-  Pi Pin 29 (GPIO 5)  ──► HX711 DOUT
-  Pi Pin 31 (GPIO 6)  ──► HX711 SCK
+  Pi Pin 29 (GPIO 5)  ──► HX711/NAU7802 DOUT
+  Pi Pin 31 (GPIO 6)  ──► HX711/NAU7802 SCK
   Pi Pin 12 (GPIO 18) ──► Tare Button (one leg)
   Pi Pin 14 (GND)     ──► Tare Button (other leg)
 ```
