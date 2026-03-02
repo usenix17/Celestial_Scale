@@ -32,7 +32,7 @@ usermod -aG gpio,video,input,i2c,audio,render,tty,seat "$USER_NAME"
 apt-get update
 apt-get install -y build-essential python3-setuptools unzip wget curl git \
     python3-pip python3-pygame python3-gpiozero wpasupplicant systemd-resolved \
-    libgl1-mesa-dri libgbm1 kbd dbus vim rfkill
+    libegl1 libgl1-mesa-dri libgbm1 kbd dbus vim rfkill
 
 # 3. pigpio Build (Standard Forking Service)
 if [ ! -f "/usr/local/bin/pigpiod" ]; then
