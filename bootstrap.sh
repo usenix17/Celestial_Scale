@@ -132,7 +132,21 @@ for TIMER in apt-daily apt-daily-upgrade man-db e2scrub_reap dpkg-db-backup logr
     ln -sf /dev/null "/etc/systemd/system/${TIMER}.timer" || true
 done
 
-# 10. rfkill unblock WiFi at boot
+# 10. Journal size limits (prevent SD card fill on a long-running kiosk)
+mkdir -p /etc/systemd/journald.conf.d
+cat <<EOF > /etc/systemd/journald.conf.d/size-limit.conf
+[Journal]
+# Cap total persistent journal to 50 MB
+SystemMaxUse=50M
+# Never let the journal consume the last 100 MB of free space
+SystemKeepFree=100M
+# Keep individual journal files small so old ones rotate out cleanly
+SystemMaxFileSize=10M
+# Discard entries older than one week
+MaxRetentionSec=1week
+EOF
+
+# 11. rfkill unblock WiFi at boot (service unit)
 cat <<EOF > /etc/systemd/system/rfkill-unblock-wifi.service
 [Unit]
 Description=Unblock WiFi via rfkill
@@ -144,7 +158,7 @@ ExecStart=/usr/sbin/rfkill unblock wifi
 WantedBy=multi-user.target
 EOF
 
-# 11. Networking
+# 12. Networking
 cat <<EOF > /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -161,10 +175,11 @@ Name=wl*
 DHCP=yes
 EOF
 
-# 12. Activation
+# 13. Activation
 systemctl enable pigpiod ssh rfkill-unblock-wifi \
     systemd-networkd systemd-resolved \
-    wpa_supplicant@wlan0.service
+    wpa_supplicant@wlan0.service \
+    getty@tty2.service
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 ADC_NAME="HX711"
