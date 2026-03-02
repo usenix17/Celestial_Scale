@@ -1,0 +1,3 @@
+[TYPECHECK]
+# pygame members are generated at runtime; suppress false positives
+generated-members=pygame.*

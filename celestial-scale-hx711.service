@@ -1,0 +1,28 @@
+[Unit]
+Description=Celestial Scale Kiosk (HX711 ADC)
+# Disable celestial-scale-nau7802.service before enabling this one.
+After=pigpiod.service
+
+[Service]
+Type=simple
+User=oas
+Group=oas
+WorkingDirectory=/home/oas/celestial_scale
+EnvironmentFile=/etc/celestial-env
+Environment=DISPLAY=:0
+Environment=NO_AT_BRIDGE=1
+
+StandardOutput=journal
+StandardError=journal
+
+ExecStart=/usr/bin/xinit /usr/bin/python3 /home/oas/celestial_scale/celestial_scale.py --adc hx711 -- :0 vt1 -nolisten tcp
+
+Nice=-20
+IOSchedulingClass=realtime
+WatchdogSec=30
+Restart=always
+RestartSec=5
+SupplementaryGroups=video input render tty gpio
+
+[Install]
+WantedBy=multi-user.target

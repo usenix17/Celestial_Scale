@@ -2,12 +2,11 @@
 # pylint: disable=too-many-lines
 """Celestial Scale - Planetary Weight Display Kiosk.
 
-Reads weight from an HX711 load cell amplifier via pigpio and displays
-the user's weight on various celestial bodies through a pygame UI on
-an HDMI-connected screen.
+Reads weight from a load cell ADC and displays the user's weight on
+various celestial bodies through a pygame UI on an HDMI-connected screen.
 
 Hardware:
-    - HX711 load cell amplifier on GPIO 5 (DOUT) and GPIO 6 (SCK)
+    - HX711 (pigpio bit-bang) or NAU7802 (I2C) load cell ADC
     - Maintenance button on GPIO 18 (Physical Pin 12)
     - HDMI display via Raspberry Pi Zero
 
@@ -19,14 +18,16 @@ Features:
     - Dirty-rect rendering to minimize CPU load on single-core Pi Zero
     - Pre-rendered static text surfaces for efficient blitting
     - Systemd watchdog integration for automatic crash recovery
-    - Button: <5s press = Tare, 10s+ hold = Safe shutdown
+    - Button: <5s press = Tare, 5× rapid = Calibration, 10s+ hold = Shutdown
 
 Requires:
-    - pigpiod running (systemctl enable pigpiod)
+    - HX711: pigpiod running (systemctl enable pigpiod)
+    - NAU7802: smbus2 + i2c-dev kernel module
     - python3-pygame
 """
 
-import configparser
+import argparse
+import json
 import math
 import os
 import statistics
@@ -39,15 +40,12 @@ from pathlib import Path
 
 import pygame
 
-try:
-    import pigpio
-except ImportError:
-    pigpio = None
+from adc import HX711WeightReader, NAU7802WeightReader
 
 try:
     from gpiozero import Button
 except ImportError:
-    Button = None
+    Button = None  # type: ignore[assignment,misc]
 
 # ----------------------------
 # Config & Tuning
@@ -82,37 +80,37 @@ HX711_DOUT_PIN = 5
 HX711_SCK_PIN = 6
 """int: BCM GPIO pin for HX711 serial clock (Physical Pin 31)."""
 
-_CALIBRATION_DEFAULT = 420.0
-_CALIBRATION_CONFIG = Path(__file__).resolve().parent / "calibration.cfg"
+_CALIBRATION_DEFAULT_FACTOR = 420.0
+_CALIBRATION_CONFIG = Path("/etc/celestial-scale/calibration.json")
 
 
-def _load_calibration_factor():
-    """Loads CALIBRATION_FACTOR from calibration.cfg, or returns the default.
+def _load_calibration():
+    """Loads (zero_offset_raw, calibration_factor) from calibration.json.
 
-    calibration.cfg is written by calibrate.py after running the calibration
-    procedure. If the file is missing or unreadable, the default value is used
-    and a warning is printed to stderr.
+    calibration.json is written by calibrate.py after running the on-screen
+    calibration procedure.  If the file is missing or unreadable, defaults
+    are returned and a warning is printed to stderr.
 
     Returns:
-        float: The calibration factor to convert raw HX711 counts to pounds.
+        tuple[int, float]: ``(zero_offset_raw, calibration_factor)`` where
+        ``zero_offset_raw`` is the raw ADC count at zero load and
+        ``calibration_factor`` converts net raw counts to pounds.
     """
-    cfg = configparser.ConfigParser()
     if _CALIBRATION_CONFIG.exists():
-        cfg.read(_CALIBRATION_CONFIG)
         try:
-            return cfg.getfloat("scale", "calibration_factor")
-        except (configparser.NoSectionError, configparser.NoOptionError,
-                ValueError) as exc:
-            print(f"Warning: could not read calibration.cfg ({exc}), "
-                  f"using default {_CALIBRATION_DEFAULT}", file=sys.stderr)
+            data = json.loads(_CALIBRATION_CONFIG.read_text(encoding="utf-8"))
+            return int(data["zero_offset"]), float(data["calibration_factor"])
+        except (KeyError, ValueError, json.JSONDecodeError) as exc:
+            print(f"Warning: could not read calibration.json ({exc}), "
+                  f"using defaults", file=sys.stderr)
     else:
-        print(f"Warning: calibration.cfg not found, "
-              f"using default {_CALIBRATION_DEFAULT}", file=sys.stderr)
-    return _CALIBRATION_DEFAULT
+        print(f"Warning: {_CALIBRATION_CONFIG} not found, "
+              f"using defaults", file=sys.stderr)
+    return 0, _CALIBRATION_DEFAULT_FACTOR
 
 
-CALIBRATION_FACTOR = _load_calibration_factor()
-"""float: Converts raw HX711 counts to pounds. Loaded from calibration.cfg."""
+_zero_offset_raw, CALIBRATION_FACTOR = _load_calibration()
+"""float: Converts net raw ADC counts to pounds. Loaded from calibration.json."""
 
 HIGH_WEIGHT_MULTIPLIER = 0.9482
 """float: Correction factor for high-weight linearity."""
@@ -218,136 +216,6 @@ class Watchdog:
 
 
 # ----------------------------
-# HX711 Driver (pigpio)
-# ----------------------------
-def _busy_wait_us(microseconds):
-    """Busy-waits for the specified number of microseconds.
-
-    Uses a spin loop instead of ``time.sleep()`` for sub-millisecond
-    accuracy. ``time.sleep()`` on Linux has ~1ms minimum granularity
-    due to kernel scheduling, which is too coarse for the HX711's
-    timing requirements.
-
-    Args:
-        microseconds: Number of microseconds to wait.
-    """
-    end = time.perf_counter() + (microseconds / 1_000_000)
-    while time.perf_counter() < end:
-        pass
-
-
-class HX711:
-    """Driver for the HX711 24-bit ADC using pigpio for hardware-timed GPIO.
-
-    The HX711 uses a proprietary serial protocol where data is clocked out
-    one bit at a time. This driver uses pigpio's DMA-based GPIO access to
-    maintain consistent timing, avoiding corruption from Linux kernel
-    preemption.
-
-    Clock pulses use busy-wait spin loops rather than ``time.sleep()`` for
-    accurate microsecond timing on the Pi Zero's single-core ARM.
-
-    Attributes:
-        pi: A pigpio.pi() instance for GPIO access.
-        dout_pin: BCM pin number for HX711 data output.
-        sck_pin: BCM pin number for HX711 serial clock.
-    """
-
-    GAIN_PULSES = {128: 1, 64: 3, 32: 2}
-    """dict: Maps gain values to the number of extra clock pulses required."""
-
-    CLOCK_PULSE_US = 10
-    """int: Clock pulse width in microseconds."""
-
-    READY_TIMEOUT = 2.0
-    """float: Maximum time to wait for HX711 ready signal in seconds."""
-
-    # Raw values at or beyond this magnitude are almost certainly garbage
-    SPIKE_THRESHOLD = 8_000_000
-    """int: Raw ADC values beyond this are rejected as noise spikes."""
-
-    def __init__(self, pi, dout_pin, sck_pin, gain=128):
-        """Initializes the HX711 driver and configures GPIO pins.
-
-        Args:
-            pi: A connected pigpio.pi() instance.
-            dout_pin: BCM GPIO pin connected to HX711 DOUT.
-            sck_pin: BCM GPIO pin connected to HX711 SCK.
-            gain: Amplifier gain setting. Valid values are 128 (Channel A),
-                64 (Channel A), or 32 (Channel B). Defaults to 128.
-        """
-        self.pi = pi
-        self.dout_pin = dout_pin
-        self.sck_pin = sck_pin
-        self._gain_pulses = self.GAIN_PULSES.get(gain, 1)
-
-        self.pi.set_mode(self.dout_pin, pigpio.INPUT)
-        self.pi.set_mode(self.sck_pin, pigpio.OUTPUT)
-        self.pi.write(self.sck_pin, 0)
-
-    def is_ready(self):
-        """Checks whether the HX711 has a new reading available.
-
-        Returns:
-            True if DOUT is low, indicating data is ready to be clocked out.
-        """
-        return self.pi.read(self.dout_pin) == 0
-
-    def read_raw(self):
-        """Reads one raw 24-bit signed value from the HX711.
-
-        Waits for the HX711 to signal data ready (DOUT low), then clocks
-        out 24 bits of data using busy-wait timing, plus additional pulses
-        to set the gain for the next conversion.
-
-        Returns:
-            A signed integer representing the raw ADC value, or None if
-            the reading is a garbage spike.
-
-        Raises:
-            TimeoutError: If the HX711 does not become ready within
-                READY_TIMEOUT seconds.
-        """
-        deadline = time.time() + self.READY_TIMEOUT
-        while not self.is_ready():
-            if time.time() > deadline:
-                raise TimeoutError("HX711 not responding")
-            time.sleep(0.001)
-
-        raw = 0
-        for _ in range(24):
-            self.pi.write(self.sck_pin, 1)
-            _busy_wait_us(self.CLOCK_PULSE_US)
-            raw = (raw << 1) | self.pi.read(self.dout_pin)
-            self.pi.write(self.sck_pin, 0)
-            _busy_wait_us(self.CLOCK_PULSE_US)
-
-        for _ in range(self._gain_pulses):
-            self.pi.write(self.sck_pin, 1)
-            _busy_wait_us(self.CLOCK_PULSE_US)
-            self.pi.write(self.sck_pin, 0)
-            _busy_wait_us(self.CLOCK_PULSE_US)
-
-        if raw & 0x800000:
-            raw -= 0x1000000
-
-        # Reject obvious garbage readings (spikes from loose wires)
-        if raw == 0 or raw == -1 or abs(raw) > self.SPIKE_THRESHOLD:
-            return None
-
-        return raw
-
-    def power_down(self):
-        """Powers down the HX711 by holding SCK high for >60 microseconds."""
-        self.pi.write(self.sck_pin, 1)
-        time.sleep(0.0001)
-
-    def power_up(self):
-        """Wakes the HX711 by pulling SCK low."""
-        self.pi.write(self.sck_pin, 0)
-
-
-# ----------------------------
 # Weight Reader Thread
 # ----------------------------
 @dataclass
@@ -367,15 +235,14 @@ class WeightState:
     variance: float = 0.0
 
 
-class HX711WeightReader(threading.Thread):  # pylint: disable=too-many-instance-attributes
-    """Background thread that continuously reads weight from an HX711.
+class WeightReaderThread(threading.Thread):  # pylint: disable=too-many-instance-attributes
+    """Background thread that continuously reads weight from any WeightReader.
 
-    Handles software tare, median-filtered spike rejection, rolling
-    average smoothing, motion-aware continuous zero tracking (CZT), and
-    stability detection.
+    Accepts any ``adc.WeightReader`` backend (HX711 or NAU7802) and runs
+    the same filtering pipeline regardless of the underlying hardware.
 
     The filtering pipeline is:
-        1. Spike rejection (discard raw values near 0, -1, or full-scale)
+        1. Spike rejection (delegated to the WeightReader backend)
         2. Median filter (removes single-sample outliers from loose wires)
         3. Rolling average (smooths remaining noise)
         4. Motion-aware CZT (only drifts zero when scale is stable and empty)
@@ -399,20 +266,21 @@ class HX711WeightReader(threading.Thread):  # pylint: disable=too-many-instance-
     BUFFER_SIZE = 7
     """int: Number of readings in the median/average filter buffer."""
 
-    def __init__(self, dout_pin=HX711_DOUT_PIN, sck_pin=HX711_SCK_PIN):
+    def __init__(self, weight_reader, zero_offset_raw=0):
         """Initializes the weight reader thread.
 
         Args:
-            dout_pin: BCM GPIO pin for HX711 data output.
-            sck_pin: BCM GPIO pin for HX711 serial clock.
+            weight_reader: An ``adc.WeightReader`` instance (HX711 or NAU7802).
+            zero_offset_raw: Pre-loaded zero offset from calibration.json.
+                If non-zero, the startup tare is skipped and this value is
+                used as the initial zero. Defaults to 0 (tare on startup).
         """
         super().__init__(daemon=True)
-        self.dout_pin = dout_pin
-        self.sck_pin = sck_pin
+        self._reader = weight_reader
         self.state = WeightState()
         self._stop_event = threading.Event()
-        self._software_offset_raw = 0
-        self._needs_tare = False
+        self._software_offset_raw = zero_offset_raw
+        self._needs_tare = zero_offset_raw == 0
         self._buffer = []
         self._stable_since = 0.0
 
@@ -434,48 +302,37 @@ class HX711WeightReader(threading.Thread):  # pylint: disable=too-many-instance-
         self._stop_event.set()
 
     def run(self):
-        """Main loop: connects to pigpiod and reads weight continuously.
+        """Main loop: reads weight continuously via the injected WeightReader.
 
-        Falls back to demo mode if pigpio is unavailable or pigpiod is
-        not running. Automatically tares on startup after a 1-second
-        settling period.
+        Waits 1 second for hardware settling, then tares (unless a saved
+        zero offset was loaded from calibration.json).  Calls
+        ``self._reader.close()`` in the finally block regardless of how
+        the loop exits.
         """
-        if not pigpio:
-            print("pigpio not available - running in demo mode")
-            return
-
-        pi = pigpio.pi()
-        if not pi.connected:
-            print("Could not connect to pigpiod - is it running?")
-            return
-
-        try:
-            hx = HX711(pi, self.dout_pin, self.sck_pin, gain=128)
-            time.sleep(1.0)
+        time.sleep(1.0)
+        if self._needs_tare:
             self.do_software_tare()
 
-            while not self._stop_event.is_set():
-                self._read_cycle(hx)
-        finally:
-            pi.stop()
-
-    def _read_cycle(self, hx):
-        """Performs a single read-process-update cycle.
-
-        Args:
-            hx: An initialized HX711 driver instance.
-        """
         try:
-            raw = hx.read_raw()
-            self.state.connected = True
+            while not self._stop_event.is_set():
+                self._read_cycle()
+        finally:
+            self._reader.close()
+
+    def _read_cycle(self):
+        """Performs a single read-process-update cycle."""
+        try:
+            raw = self._reader.read_raw()
             if raw is not None:
+                self.state.connected = True
                 self._process_reading(raw)
-        except TimeoutError:
-            self.state.connected = False
-            time.sleep(0.5)
+            else:
+                # Not ready yet (NAU7802 between cycles) or demo mode
+                time.sleep(0.02)
         except Exception as exc:  # pylint: disable=broad-except
-            print(f"HX711 read error: {exc}")
-            time.sleep(0.1)
+            self.state.connected = False
+            print(f"Weight reader error: {exc}")
+            time.sleep(0.5)
 
     def _process_reading(self, raw):
         """Processes a raw ADC value into a filtered weight in pounds.
@@ -645,6 +502,10 @@ def _build_text_cache(fonts):
     # Disconnected sensor label
     cache["disconnected"] = fonts["debug"].render(
         "SENSOR: DISCONNECTED", True, COLOR_MUTED)
+
+    # Calibration shortcut message
+    cache["entering_cal"] = fonts["cta"].render(
+        "ENTERING CALIBRATION...", True, COLOR_NASA_RED)
 
     return cache
 
@@ -890,15 +751,34 @@ def _handle_events(reader):
             sys.exit()
 
 
-def _handle_button(ui, reader, maint_btn, ctx, now):
-    """Processes maintenance button presses for tare and shutdown.
+_CAL_PRESS_COUNT = 5
+"""int: Number of rapid button presses required to enter calibration mode."""
+
+_CAL_PRESS_WINDOW = 3.0
+"""float: Time window in seconds for the rapid-press calibration shortcut."""
+
+CALIBRATION_SCRIPT = BASE_DIR / "calibrate.py"
+"""Path: On-screen calibration script launched by the 5-press shortcut."""
+
+
+def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-arguments,too-many-positional-arguments
+                   btn_press_times, adc_flag):
+    """Processes maintenance button presses for tare, shutdown, and calibration.
+
+    A short press (<5 s) triggers a software tare.  Holding for 10 s+
+    triggers safe shutdown.  Five presses within 3 seconds launches the
+    on-screen calibration tool.
 
     Args:
         ui: The UIContext with screen, fonts, dimensions, and cache.
-        reader: The active weight reader for tare commands.
+        reader: The active WeightReaderThread for tare commands.
         maint_btn: A gpiozero Button instance, or None if unavailable.
         ctx: The current ScaleContext.
         now: Current timestamp.
+        btn_press_times: Mutable list of recent button-release timestamps,
+            used for calibration rapid-press detection.
+        adc_flag: The ``--adc`` argument string passed at startup
+            (``"hx711"`` or ``"nau7802"``), forwarded to calibrate.py.
     """
     if not maint_btn:
         return
@@ -913,6 +793,26 @@ def _handle_button(ui, reader, maint_btn, ctx, now):
         ctx.btn_press_start = 0.0
 
         if ctx.state != STATE_SHUTDOWN and press_duration < 5.0:
+            # Track this release for calibration rapid-press detection
+            btn_press_times.append(now)
+            btn_press_times[:] = [t for t in btn_press_times
+                                   if now - t < _CAL_PRESS_WINDOW]
+
+            if len(btn_press_times) >= _CAL_PRESS_COUNT:
+                btn_press_times.clear()
+                ui.screen.fill(COLOR_BG)
+                blit_centered(ui.screen, ui.cache["entering_cal"],
+                               ui.height / 2)
+                pygame.display.flip()
+                reader.stop()
+                reader.join(timeout=2)
+                subprocess.run(
+                    [sys.executable, str(CALIBRATION_SCRIPT),
+                     "--adc", adc_flag],
+                    check=False,
+                )
+                sys.exit(0)
+
             handle_tare(ui, reader)
             ctx.state = STATE_IDLE
             ctx.captured_weight = 0.0
@@ -1077,13 +977,23 @@ def _draw(ui, ctx, reader_state, now):
 # ----------------------------
 # Main
 # ----------------------------
-def main():
+def main():  # pylint: disable=too-many-locals
     """Entry point for the Celestial Scale application.
 
-    Initializes pygame, hardware readers, systemd watchdog, and runs
-    the main event loop with state machine logic for idle, calculation,
-    results, and shutdown screens.
+    Initializes pygame, the selected ADC backend, systemd watchdog, and
+    runs the main event loop with state machine logic for idle,
+    calculation, results, and shutdown screens.
+
+    Command-line args:
+        --adc {hx711,nau7802}: ADC backend to use. Defaults to hx711.
     """
+    parser = argparse.ArgumentParser(description="Celestial Scale Kiosk")
+    parser.add_argument("--adc", choices=["hx711", "nau7802"],
+                        default="hx711",
+                        help="ADC backend: hx711 (pigpio) or nau7802 (I2C)")
+    args = parser.parse_args()
+    print(f"ADC backend: {args.adc}", flush=True)
+
     watchdog = Watchdog()
 
     # Set highest process priority for timing-sensitive GPIO.
@@ -1119,7 +1029,12 @@ def main():
     ui = UIContext(screen=screen, fonts=fonts, width=width,
                    height=height, cache=cache)
 
-    reader = HX711WeightReader(HX711_DOUT_PIN, HX711_SCK_PIN)
+    if args.adc == "hx711":
+        adc_backend = HX711WeightReader(HX711_DOUT_PIN, HX711_SCK_PIN)
+    else:
+        adc_backend = NAU7802WeightReader()
+
+    reader = WeightReaderThread(adc_backend, zero_offset_raw=_zero_offset_raw)
     reader.start()
 
     maint_btn = None
@@ -1128,6 +1043,7 @@ def main():
 
     ctx = ScaleContext()
     clock = pygame.time.Clock()
+    btn_press_times = []
 
     watchdog.ready()
 
@@ -1138,7 +1054,8 @@ def main():
             watchdog.kick()
 
             _handle_events(reader)
-            _handle_button(ui, reader, maint_btn, ctx, now)
+            _handle_button(ui, reader, maint_btn, ctx, now,
+                           btn_press_times, args.adc)
 
             if ctx.state == STATE_SHUTDOWN:
                 handle_shutdown(ui)
