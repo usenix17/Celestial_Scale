@@ -246,7 +246,7 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
 
     clock = pygame.time.Clock()
 
-    while True:
+    while True:  # pylint: disable=too-many-nested-blocks
         clock.tick(TARGET_FPS)
         now = time.time()
 
@@ -285,23 +285,30 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                 _log.info("Step: %s", step)
 
         elif step == STEP_ZERO:
-            raw = reader.read_raw()
-            if raw is not None:
-                zero_readings.append(raw)
-            progress = len(zero_readings) / SAMPLE_COUNT
-            _draw_sampling(screen, fonts, width, height,
-                           "CAPTURING ZERO READING...", progress,
-                           step_index=2)
-            if len(zero_readings) >= SAMPLE_COUNT:
-                zero_offset = int(statistics.median(zero_readings))
-                _log.debug("Zero readings: mean=%.0f stdev=%.1f n=%d",
-                           statistics.mean(zero_readings),
-                           statistics.stdev(zero_readings),
-                           len(zero_readings))
-                load_readings = []
-                step = STEP_PLACE
+            try:
+                raw = reader.read_raw()
+            except Exception as exc:  # pylint: disable=broad-except
+                error_msg = f"ADC read failed: {exc}"
+                _log.error("Step: %s — %s", STEP_ERROR, error_msg)
+                step = STEP_ERROR
                 step_start = now
-                _log.info("Step: %s (zero_offset=%d)", step, zero_offset)
+            else:
+                if raw is not None:
+                    zero_readings.append(raw)
+                progress = len(zero_readings) / SAMPLE_COUNT
+                _draw_sampling(screen, fonts, width, height,
+                               "CAPTURING ZERO READING...", progress,
+                               step_index=2)
+                if len(zero_readings) >= SAMPLE_COUNT:
+                    zero_offset = int(statistics.median(zero_readings))
+                    _log.debug("Zero readings: mean=%.0f stdev=%.1f n=%d",
+                               statistics.mean(zero_readings),
+                               statistics.stdev(zero_readings),
+                               len(zero_readings))
+                    load_readings = []
+                    step = STEP_PLACE
+                    step_start = now
+                    _log.info("Step: %s (zero_offset=%d)", step, zero_offset)
 
         elif step == STEP_PLACE:
             _draw_prompt(screen, fonts, width, height,
@@ -315,35 +322,42 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                 _log.info("Step: %s", step)
 
         elif step == STEP_LOAD:
-            raw = reader.read_raw()
-            if raw is not None:
-                load_readings.append(raw)
-            progress = len(load_readings) / SAMPLE_COUNT
-            _draw_sampling(screen, fonts, width, height,
-                           "CAPTURING LOADED READING...", progress,
-                           step_index=4)
-            if len(load_readings) >= SAMPLE_COUNT:
-                _log.debug("Load readings: mean=%.0f stdev=%.1f n=%d",
-                           statistics.mean(load_readings),
-                           statistics.stdev(load_readings),
-                           len(load_readings))
-                loaded_median = statistics.median(load_readings)
-                net_raw = loaded_median - zero_offset
-                if net_raw == 0:
-                    error_msg = "No weight detected. Check wiring."
-                    _log.error("Step: %s — %s", STEP_ERROR, error_msg)
-                    step = STEP_ERROR
-                else:
-                    cal_factor = net_raw / KNOWN_WEIGHT_LBS
-                    try:
-                        write_calibration_json(zero_offset, cal_factor)
-                        step = STEP_DONE
-                        _log.info("Step: %s (factor=%.4f)", step, cal_factor)
-                    except OSError as exc:
-                        error_msg = f"Could not write config: {exc}"
+            try:
+                raw = reader.read_raw()
+            except Exception as exc:  # pylint: disable=broad-except
+                error_msg = f"ADC read failed: {exc}"
+                _log.error("Step: %s — %s", STEP_ERROR, error_msg)
+                step = STEP_ERROR
+                step_start = now
+            else:
+                if raw is not None:
+                    load_readings.append(raw)
+                progress = len(load_readings) / SAMPLE_COUNT
+                _draw_sampling(screen, fonts, width, height,
+                               "CAPTURING LOADED READING...", progress,
+                               step_index=4)
+                if len(load_readings) >= SAMPLE_COUNT:
+                    _log.debug("Load readings: mean=%.0f stdev=%.1f n=%d",
+                               statistics.mean(load_readings),
+                               statistics.stdev(load_readings),
+                               len(load_readings))
+                    loaded_median = statistics.median(load_readings)
+                    net_raw = loaded_median - zero_offset
+                    if net_raw == 0:
+                        error_msg = "No weight detected. Check wiring."
                         _log.error("Step: %s — %s", STEP_ERROR, error_msg)
                         step = STEP_ERROR
-                step_start = now
+                    else:
+                        cal_factor = net_raw / KNOWN_WEIGHT_LBS
+                        try:
+                            write_calibration_json(zero_offset, cal_factor)
+                            step = STEP_DONE
+                            _log.info("Step: %s (factor=%.4f)", step, cal_factor)
+                        except OSError as exc:
+                            error_msg = f"Could not write config: {exc}"
+                            _log.error("Step: %s — %s", STEP_ERROR, error_msg)
+                            step = STEP_ERROR
+                    step_start = now
 
         elif step == STEP_DONE:
             elapsed = now - step_start
