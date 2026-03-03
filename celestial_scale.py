@@ -870,12 +870,10 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
                 reader.stop()
                 reader.join(timeout=2)
                 maint_btn.close()
-                subprocess.run(
-                    [sys.executable, str(CALIBRATION_SCRIPT),
-                     "--adc", adc_flag],
-                    check=False,
-                )
-                sys.exit(0)
+                pygame.quit()
+                os.execv(sys.executable,
+                         [sys.executable, str(CALIBRATION_SCRIPT),
+                          "--adc", adc_flag])
 
             if ctx.tare_phase == "":
                 _log.info("Tare triggered (press_duration=%.2f s)",
