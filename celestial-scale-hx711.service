@@ -20,6 +20,7 @@ ExecStart=/usr/bin/xinit /usr/bin/python3 /home/oas/celestial_scale/celestial_sc
 Nice=-20
 IOSchedulingClass=realtime
 WatchdogSec=30
+NotifyAccess=all
 Restart=always
 RestartSec=5
 SupplementaryGroups=video input render tty gpio

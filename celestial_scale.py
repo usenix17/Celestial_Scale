@@ -732,26 +732,6 @@ def _draw_body_row(ui, x_pos, y_pos, val_off,  # pylint: disable=too-many-argume
 # ----------------------------
 # Button Handling
 # ----------------------------
-def handle_tare(ui, reader):
-    """Displays tare prompts and triggers a software tare.
-
-    Args:
-        ui: The UIContext with screen, fonts, dimensions, and cache.
-        reader: The active HX711WeightReader instance.
-    """
-    ui.screen.fill(COLOR_BG)
-    blit_centered(ui.screen, ui.cache["hands_off"], ui.height / 2)
-    pygame.display.flip()
-    time.sleep(2.0)
-
-    reader.do_software_tare()
-
-    ui.screen.fill(COLOR_BG)
-    blit_centered(ui.screen, ui.cache["zeroing"], ui.height / 2)
-    pygame.display.flip()
-    time.sleep(1.0)
-
-
 def handle_shutdown(ui):
     """Displays shutdown message and halts the system.
 
@@ -776,7 +756,7 @@ STATE_SHUTDOWN = "SHUTDOWN"
 
 
 @dataclass
-class ScaleContext:
+class ScaleContext:  # pylint: disable=too-many-instance-attributes
     """Mutable state for the scale's state machine.
 
     Attributes:
@@ -797,6 +777,10 @@ class ScaleContext:
     btn_press_start: float = 0.0
     prev_state: str = ""
     prev_weight_str: str = ""
+    tare_phase: str = ""
+    """Current tare animation phase: '' | 'hands_off' | 'zeroing'."""
+    tare_phase_start: float = 0.0
+    """Timestamp when the current tare phase began."""
 
 
 # ----------------------------
@@ -825,6 +809,12 @@ _CAL_PRESS_WINDOW = 3.0
 
 CALIBRATION_SCRIPT = BASE_DIR / "calibrate.py"
 """Path: On-screen calibration script launched by the 5-press shortcut."""
+
+_TARE_WAIT_SEC = 2.0
+"""float: Seconds to display 'HANDS OFF' before zeroing during tare."""
+
+_TARE_ZERO_SEC = 1.0
+"""float: Seconds to display 'ZEROING' after the software tare command."""
 
 
 def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-arguments,too-many-positional-arguments
@@ -886,20 +876,56 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
                 )
                 sys.exit(0)
 
-            _log.info("Tare triggered (press_duration=%.2f s)", press_duration)
-            handle_tare(ui, reader)
-            ctx.state = STATE_IDLE
-            ctx.captured_weight = 0.0
+            if ctx.tare_phase == "":
+                _log.info("Tare triggered (press_duration=%.2f s)",
+                          press_duration)
+                ctx.tare_phase = "hands_off"
+                ctx.tare_phase_start = now
+                ctx.state = STATE_IDLE
+                ctx.captured_weight = 0.0
+
+
+def _advance_tare(ctx, reader, now):
+    """Advances the non-blocking tare animation sequence.
+
+    Called every frame while ctx.tare_phase is non-empty.  Transitions
+    through two phases:
+
+        ``"hands_off"`` — displays 'HANDS OFF SCALE...' for _TARE_WAIT_SEC,
+                          then triggers the software tare and moves to
+                          ``"zeroing"``.
+        ``"zeroing"``   — displays 'ZEROING SCALE...' for _TARE_ZERO_SEC,
+                          then clears tare_phase to resume normal rendering.
+
+    Args:
+        ctx: The current ScaleContext.
+        reader: The WeightReaderThread to tare once the wait expires.
+        now: Current timestamp.
+    """
+    elapsed = now - ctx.tare_phase_start
+    if ctx.tare_phase == "hands_off" and elapsed >= _TARE_WAIT_SEC:
+        reader.do_software_tare()
+        ctx.tare_phase = "zeroing"
+        ctx.tare_phase_start = now
+    elif ctx.tare_phase == "zeroing" and elapsed >= _TARE_ZERO_SEC:
+        ctx.tare_phase = ""
 
 
 def _update_state(ctx, reader, now):
     """Advances the state machine based on current weight and timing.
+
+    If a tare sequence is in progress, advances that and returns early
+    to suppress weight-based state transitions.
 
     Args:
         ctx: The current ScaleContext.
         reader: The HX711WeightReader instance.
         now: Current timestamp.
     """
+    if ctx.tare_phase:
+        _advance_tare(ctx, reader, now)
+        return
+
     if ctx.state == STATE_IDLE:
         _update_idle(ctx, reader, now)
     elif ctx.state == STATE_CALC:
@@ -1045,7 +1071,11 @@ def _draw(ui, ctx, reader_state, now):
     """
     ui.screen.fill(COLOR_BG)
 
-    if ctx.state == STATE_IDLE:
+    if ctx.tare_phase == "hands_off":
+        blit_centered(ui.screen, ui.cache["hands_off"], ui.height / 2)
+    elif ctx.tare_phase == "zeroing":
+        blit_centered(ui.screen, ui.cache["zeroing"], ui.height / 2)
+    elif ctx.state == STATE_IDLE:
         draw_idle_screen(ui, reader_state.last_lb,
                          reader_state.connected, now)
     elif ctx.state == STATE_CALC:
