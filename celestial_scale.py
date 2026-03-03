@@ -869,6 +869,7 @@ def _handle_button(ui, reader, maint_btn, ctx, now,  # pylint: disable=too-many-
                 pygame.display.flip()
                 reader.stop()
                 reader.join(timeout=2)
+                maint_btn.close()
                 subprocess.run(
                     [sys.executable, str(CALIBRATION_SCRIPT),
                      "--adc", adc_flag],
