@@ -28,6 +28,7 @@ import json
 import logging
 import math
 import os
+import socket
 import statistics
 import sys
 import time
@@ -127,6 +128,28 @@ def setup_logging(level: str) -> None:
 # ----------------------------
 # Helpers
 # ----------------------------
+def _sd_notify(message: str) -> None:
+    """Sends a message to the systemd notification socket if available.
+
+    Used to send WATCHDOG=1 keepalives so the watchdog timer does not
+    expire while the calibration loop is running in place of the kiosk.
+
+    Args:
+        message: The sd_notify payload (e.g. ``"WATCHDOG=1"``).
+    """
+    addr = os.environ.get("NOTIFY_SOCKET", "")
+    if not addr:
+        return
+    if addr.startswith("@"):
+        addr = "\0" + addr[1:]
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        sock.connect(addr)
+        sock.sendall(message.encode())
+    finally:
+        sock.close()
+
+
 def load_font(size_px):
     """Loads the custom kiosk font, falling back to Arial if unavailable.
 
@@ -249,9 +272,20 @@ def run_calibration(reader: WeightReader, maint_btn, adc_flag: str) -> None:  # 
 
     clock = pygame.time.Clock()
 
+    _wd_usec = os.environ.get("WATCHDOG_USEC")
+    _wd_interval = int(_wd_usec) / 1_000_000 / 2 if _wd_usec else 0.0
+    _wd_last_kick = time.monotonic()
+
     while True:  # pylint: disable=too-many-nested-blocks
         clock.tick(TARGET_FPS)
         now = time.time()
+
+        # Kick watchdog so the 30s timer does not fire during calibration
+        if _wd_interval:
+            _wd_mono = time.monotonic()
+            if _wd_mono - _wd_last_kick >= _wd_interval:
+                _sd_notify("WATCHDOG=1")
+                _wd_last_kick = _wd_mono
 
         # ---- Event handling ----
         for event in pygame.event.get():
