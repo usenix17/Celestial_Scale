@@ -27,6 +27,7 @@ import argparse
 import json
 import logging
 import math
+import os
 import statistics
 import sys
 import time
@@ -103,6 +104,8 @@ COLOR_NASA_RED = (252, 61, 33)
 
 BASE_DIR = Path(__file__).resolve().parent
 FONT_PATH = BASE_DIR / "assets" / "fonts" / "Nasalization Rg.otf"
+_SCALE_SCRIPT = BASE_DIR / "celestial_scale.py"
+"""Path: Main kiosk script to exec back into on calibration exit."""
 
 
 def setup_logging(level: str) -> None:
@@ -202,7 +205,7 @@ def write_calibration_json(zero_offset, calibration_factor):
 # ----------------------------
 # Main calibration loop
 # ----------------------------
-def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable=too-many-statements,too-many-branches,too-many-locals
+def run_calibration(reader: WeightReader, maint_btn, adc_flag: str) -> None:  # pylint: disable=too-many-statements,too-many-branches,too-many-locals
     """Runs the full pygame calibration state machine.
 
     Drives the display through all calibration steps and writes the
@@ -254,10 +257,14 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit(0)
+                reader.close()
+                os.execv(sys.executable,
+                         [sys.executable, str(_SCALE_SCRIPT), "--adc", adc_flag])
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 pygame.quit()
-                sys.exit(0)
+                reader.close()
+                os.execv(sys.executable,
+                         [sys.executable, str(_SCALE_SCRIPT), "--adc", adc_flag])
 
         # ---- Button edge detection ----
         is_pressed = bool(maint_btn and maint_btn.is_pressed)
@@ -366,7 +373,8 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
             if elapsed >= RESTART_DELAY:
                 pygame.quit()
                 reader.close()
-                sys.exit(0)
+                os.execv(sys.executable,
+                         [sys.executable, str(_SCALE_SCRIPT), "--adc", adc_flag])
 
         elif step == STEP_ERROR:
             elapsed = now - step_start
@@ -374,7 +382,8 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
             if elapsed >= ERROR_DISPLAY_SEC:
                 pygame.quit()
                 reader.close()
-                sys.exit(1)
+                os.execv(sys.executable,
+                         [sys.executable, str(_SCALE_SCRIPT), "--adc", adc_flag])
 
         pygame.display.flip()
 
@@ -523,7 +532,7 @@ def main() -> None:
     if Button:
         maint_btn = Button(BUTTON_PIN_BCM, pull_up=True)
 
-    run_calibration(reader, maint_btn)
+    run_calibration(reader, maint_btn, args.adc)
 
 
 if __name__ == "__main__":
