@@ -8,17 +8,14 @@ only the maintenance button (GPIO 18) — no keyboard or terminal needed.
 
 Procedure:
     1. Remove all weight → press button to capture zero offset.
-    2. Place known weight → button captured automatically.
-    3. Enter the known weight in lbs using the button as a digit selector.
-    4. Calibration factor and zero offset are written to
+    2. Place the 50-lb reference weight → readings captured automatically.
+    3. Calibration factor and zero offset are written to
        calibration.json in the same directory as this script.
-    5. The main celestial_scale service restarts automatically
+    4. The main celestial_scale service restarts automatically
        (systemd Restart=always) and picks up the new values.
 
 Button interaction:
-    Short press (<1 s): increment the current digit (0→1→…→9→0)
-    Long press  (≥1 s): advance to the next digit position;
-                        long press on the last digit confirms the entry.
+    Any press: advance from a prompt screen to the next step.
 
 Requires:
     - python3-pygame
@@ -86,8 +83,8 @@ STEP_PLACE = "PLACE"
 STEP_LOAD = "LOAD"
 """Sampling: capture loaded readings with progress bar."""
 
-STEP_ENTER = "ENTER"
-"""Numeric entry: button-based digit selector for known weight."""
+KNOWN_WEIGHT_LBS = 50.0
+"""float: Reference weight used during calibration, in pounds."""
 
 STEP_DONE = "DONE"
 """Display: calibration complete, countdown to exit."""
@@ -203,115 +200,8 @@ def write_calibration_json(zero_offset, calibration_factor):
 
 
 # ----------------------------
-# Digit entry state
-# ----------------------------
-class DigitEntry:  # pylint: disable=too-few-public-methods
-    """Mutable state for the button-driven numeric weight entry.
-
-    Attributes:
-        digits: List of 5 single digit ints: [d0, d1, d2, d3, d4]
-            representing the value ``d0d1d2d3.d4`` lbs.
-        active: Index of the digit currently being incremented (0–4).
-        btn_down_time: Timestamp of the current button press start,
-            or 0.0 if the button is not held.
-        confirmed: True once the operator long-presses on digit 4.
-    """
-
-    NUM_DIGITS = 5
-    """int: Total digit positions (4 integer + 1 decimal)."""
-
-    def __init__(self):
-        """Initialises all digits to zero."""
-        self.digits = [0] * self.NUM_DIGITS
-        self.active = 0
-        self.btn_down_time = 0.0
-        self.confirmed = False
-
-    @property
-    def weight_lbs(self) -> float:
-        """float: Current value of the digit entry as a float in lbs."""
-        d = self.digits
-        return float(f"{d[0]}{d[1]}{d[2]}{d[3]}.{d[4]}")
-
-    def draw(self, screen, fonts, width, height):  # pylint: disable=too-many-locals
-        """Renders the digit selector on screen.
-
-        Integer digits are drawn left of the decimal point, the decimal
-        digit to its right.  The active digit is highlighted in accent
-        colour; others are rendered in the foreground colour.
-
-        Args:
-            screen: The pygame display surface.
-            fonts: Dictionary of named font objects.
-            width: Screen width in pixels.
-            height: Screen height in pixels.
-        """
-        digit_font = fonts["cta"]
-        char_w = digit_font.size("0")[0]
-        dot_w = digit_font.size(".")[0]
-        gap = int(char_w * 0.2)
-
-        # Total width: 4 int digits + dot + 1 dec digit + gaps
-        total_w = 4 * char_w + dot_w + char_w + 5 * gap
-        start_x = (width - total_w) // 2
-        y_centre = int(height * 0.52)
-
-        x = start_x
-        for i, digit in enumerate(self.digits):
-            if i == 4:
-                # Draw decimal point first
-                dot_surf = digit_font.render(".", True, COLOR_MUTED)
-                dot_rect = dot_surf.get_rect(midleft=(x, y_centre))
-                screen.blit(dot_surf, dot_rect)
-                x += dot_w + gap
-
-            color = COLOR_ACCENT if i == self.active else COLOR_FG
-            d_surf = digit_font.render(str(digit), True, color)
-            d_rect = d_surf.get_rect(midleft=(x, y_centre))
-            screen.blit(d_surf, d_rect)
-            x += char_w + gap
-
-
-# ----------------------------
 # Main calibration loop
 # ----------------------------
-def _confirm_entry(entry, zero_offset, load_readings):  # pylint: disable=too-many-return-statements
-    """Validates the entered weight and computes the calibration factor.
-
-    Called once the operator confirms their weight entry via long press.
-
-    Args:
-        entry: The completed DigitEntry with the entered weight.
-        zero_offset: Median raw ADC value from the zero-load capture.
-        load_readings: List of raw ADC values from the loaded capture.
-
-    Returns:
-        tuple[str, str, float]: ``(next_step, error_msg, cal_factor)``
-        where ``next_step`` is ``STEP_DONE`` on success or ``STEP_ERROR``
-        on failure, ``error_msg`` is empty on success, and ``cal_factor``
-        is 0.0 on failure.
-    """
-    known_weight = entry.weight_lbs
-    if known_weight <= 0.0:
-        return STEP_ERROR, "Weight must be greater than zero.", 0.0
-
-    if not load_readings:
-        return STEP_ERROR, "No readings received. Check wiring.", 0.0
-
-    loaded_median = statistics.median(load_readings)
-    net_raw = loaded_median - zero_offset
-    if net_raw == 0:
-        return STEP_ERROR, "No weight detected. Check wiring.", 0.0
-
-    cal_factor = net_raw / known_weight
-    try:
-        write_calibration_json(zero_offset, cal_factor)
-    except OSError as exc:
-        return STEP_ERROR, f"Could not write config: {exc}", 0.0
-
-    return STEP_DONE, "", cal_factor
-
-
 def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable=too-many-statements,too-many-branches,too-many-locals
     """Runs the full pygame calibration state machine.
 
@@ -346,7 +236,6 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
     zero_readings: list = []
     load_readings: list = []
     zero_offset = 0
-    entry = DigitEntry()
     step_start = time.time()
     cal_factor = 0.0
     error_msg = ""
@@ -416,7 +305,7 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
 
         elif step == STEP_PLACE:
             _draw_prompt(screen, fonts, width, height,
-                         "PLACE KNOWN WEIGHT ON SCALE",
+                         "PLACE 50-LB WEIGHT ON SCALE",
                          "PRESS BUTTON WHEN READY",
                          step_index=3)
             if is_short or is_long:
@@ -434,40 +323,27 @@ def run_calibration(reader: WeightReader, maint_btn) -> None:  # pylint: disable
                            "CAPTURING LOADED READING...", progress,
                            step_index=4)
             if len(load_readings) >= SAMPLE_COUNT:
-                if not load_readings or not zero_readings:
-                    error_msg = "No readings received. Check wiring."
+                _log.debug("Load readings: mean=%.0f stdev=%.1f n=%d",
+                           statistics.mean(load_readings),
+                           statistics.stdev(load_readings),
+                           len(load_readings))
+                loaded_median = statistics.median(load_readings)
+                net_raw = loaded_median - zero_offset
+                if net_raw == 0:
+                    error_msg = "No weight detected. Check wiring."
                     _log.error("Step: %s — %s", STEP_ERROR, error_msg)
                     step = STEP_ERROR
-                    step_start = now
                 else:
-                    _log.debug("Load readings: mean=%.0f stdev=%.1f n=%d",
-                               statistics.mean(load_readings),
-                               statistics.stdev(load_readings),
-                               len(load_readings))
-                    entry = DigitEntry()
-                    step = STEP_ENTER
-                    step_start = now
-                    _log.info("Step: %s", step)
-
-        elif step == STEP_ENTER:
-            _draw_digit_entry(screen, fonts, width, height, entry)
-            if not entry.confirmed:
-                if is_short:
-                    entry.digits[entry.active] = (
-                        entry.digits[entry.active] + 1) % 10
-                elif is_long:
-                    if entry.active < entry.NUM_DIGITS - 1:
-                        entry.active += 1
-                    else:
-                        entry.confirmed = True
-            if entry.confirmed:
-                step, error_msg, cal_factor = _confirm_entry(
-                    entry, zero_offset, load_readings)
+                    cal_factor = net_raw / KNOWN_WEIGHT_LBS
+                    try:
+                        write_calibration_json(zero_offset, cal_factor)
+                        step = STEP_DONE
+                        _log.info("Step: %s (factor=%.4f)", step, cal_factor)
+                    except OSError as exc:
+                        error_msg = f"Could not write config: {exc}"
+                        _log.error("Step: %s — %s", STEP_ERROR, error_msg)
+                        step = STEP_ERROR
                 step_start = now
-                if step == STEP_DONE:
-                    _log.info("Step: %s (factor=%.4f)", step, cal_factor)
-                else:
-                    _log.error("Step: %s — %s", step, error_msg)
 
         elif step == STEP_DONE:
             elapsed = now - step_start
@@ -502,7 +378,7 @@ def _draw_step_indicator(screen, fonts, height, step_index):
         step_index: 1-based step number to display.
     """
     draw_centered(screen, fonts["debug"],
-                  f"STEP {step_index} OF 5",
+                  f"STEP {step_index} OF 4",
                   height * 0.92, COLOR_MUTED)
 
 
@@ -549,28 +425,6 @@ def _draw_sampling(screen, fonts, width, height,  # pylint: disable=too-many-arg
     draw_centered(screen, fonts["sub"], caption, height * 0.42, COLOR_ACCENT)
     draw_progress_bar(screen, progress, width, height)
     _draw_step_indicator(screen, fonts, height, step_index)
-
-
-def _draw_digit_entry(screen, fonts, width, height, entry):
-    """Draws the numeric weight entry screen.
-
-    Args:
-        screen: The pygame display surface.
-        fonts: Dictionary of named font objects.
-        width: Screen width in pixels.
-        height: Screen height in pixels.
-        entry: The current DigitEntry state.
-    """
-    screen.fill(COLOR_BG)
-    draw_centered(screen, fonts["title"],
-                  "CELESTIAL SCALE CALIBRATION", height * 0.15, COLOR_NASA_RED)
-    draw_centered(screen, fonts["sub"],
-                  "ENTER KNOWN WEIGHT (LBS):", height * 0.35, COLOR_FG)
-    entry.draw(screen, fonts, width, height)
-    draw_centered(screen, fonts["debug"],
-                  "SHORT PRESS: +1   LONG PRESS: NEXT / CONFIRM",
-                  height * 0.72, COLOR_MUTED)
-    _draw_step_indicator(screen, fonts, height, 5)
 
 
 def _draw_done(screen, fonts, width, height, cal_factor,  # pylint: disable=too-many-arguments,too-many-positional-arguments

@@ -6,7 +6,7 @@ The result is saved to `/home/oas/celestial_scale/calibration.json` and loaded a
 
 ## What you need
 
-- A known reference weight (a dumbbell, a bag of dog food with a printed weight, etc.)
+- A 50 lb dumbbell (the heavier the reference weight, the lower the relative calibration error — 50 lbs gives ±0.2% vs ±2% for 5 lbs)
 - Access to the maintenance button (GPIO 18, Physical Pin 12)
 
 ## Launching calibration
@@ -27,40 +27,31 @@ python3 calibrate.py --adc hx711            # or --adc nau7802
 
 ## Procedure
 
-The calibration tool walks through 5 steps, each shown on the kiosk display.
+The calibration tool walks through 4 steps, each shown on the kiosk display.
 
 ### Step 1 — Remove weight
 
 The screen shows: **REMOVE ALL WEIGHT / PRESS BUTTON WHEN READY**
 
-Clear the scale platform. Press the button (short or long press) to continue.
+Clear the scale platform completely. Press the button to continue.
 
 ### Step 2 — Zero capture
 
 The screen shows: **CAPTURING ZERO READING…** with a progress bar.
 
-Stand clear — the tool automatically captures 20 baseline readings. The bar fills on its own; no button press needed.
+Stand clear — the tool automatically captures 20 baseline readings. No button press needed; the bar fills on its own.
 
 ### Step 3 — Place weight
 
-The screen shows: **PLACE KNOWN WEIGHT ON SCALE / PRESS BUTTON WHEN READY**
+The screen shows: **PLACE 50-LB WEIGHT ON SCALE / PRESS BUTTON WHEN READY**
 
-Set your reference weight on the platform. Press the button when ready.
+Set the 50 lb dumbbell on the center of the platform. Press the button when ready.
 
 ### Step 4 — Load capture
 
 The screen shows: **CAPTURING LOADED READING…** with a progress bar.
 
-Hold still — the tool captures 20 loaded readings automatically.
-
-### Step 5 — Enter known weight
-
-The screen shows a 5-digit selector: `XXXX.X` lbs (e.g. `0050.0` for 50 lbs).
-
-Use the button to enter your reference weight:
-- **Short press** (< 1 s release): increment the highlighted digit (0 → 1 → … → 9 → 0)
-- **Long press** (≥ 1 s release): advance to the next digit position
-- **Long press on the last digit**: confirm the entry and compute the calibration factor
+Hold still — the tool captures 20 loaded readings automatically, computes the calibration factor, and writes it to disk.
 
 ### Completion
 
